@@ -6,11 +6,11 @@ extends RefCounted
 ## 资产缺失/解析失败时保留 arcade_car.tscn 内嵌占位视觉并告警，仓库克隆无 art/ 也能运行。
 ## 坐标约定见 docs/美术资源与车辆结构.md（GLB 场景根空间 = VehicleRigidBody 子空间）。
 
-## Car 表 id → 车壳资产 id（同时兼容旧 1~3 段与 601~ 段，配表 id 迁移完成后可移除旧段）
+## Car 表 id → 车壳资产 id（后续迁入配表 body_id 字段后移除本映射）
 const BODY_BY_CAR := {
-	1: "brute_power", 601: "brute_power",
-	2: "agile_sprinter", 602: "agile_sprinter",
-	3: "all_rounder", 603: "all_rounder",
+	601: "brute_power",
+	602: "agile_sprinter",
+	603: "all_rounder",
 }
 const DEFAULT_WHEEL := "sport_v1"
 
