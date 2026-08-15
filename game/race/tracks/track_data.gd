@@ -1,8 +1,8 @@
 class_name TrackData
 extends RefCounted
 ## HTML 赛道编辑器(tools/track_editor/index.html)导出 JSON 的运行时数据 + 几何查询。
-## baked 采样点为紧凑数组 [x,y,z, tx,ty,tz, width, s](每点 8 元素,编辑器烘焙),
-## Godot 直接消费烘焙点、不重新采样样条,保证所见即所得。
+## baked 采样点为紧凑数组 [x,y,z, width](每点 4 元素,编辑器烘焙);切线、弧长、
+## 曲率半径由 Godot 加载时按编辑器同公式重建,保证所见即所得。
 ## 坐标系与编辑器一致:x 右,z 向前(-z 为起始前进方向),y 高度。
 
 const LOOT_Y := 0.9        # 掉落物悬浮高度(路面之上)
@@ -52,11 +52,10 @@ func _from_dict(d: Dictionary) -> void:
 		for p in baked[rid]:
 			var a: Array = p
 			route["pts"].append(Vector3(a[0], a[1], a[2]))
-			route["tans"].append(Vector3(a[3], a[4], a[5]))
-			route["widths"].append(a[6])
-			route["s_arr"].append(a[7])
+			route["widths"].append(a[3])
 		if route["pts"].size() < 2:
 			continue
+		_compute_tans_s(route)
 		_compute_radii(route)
 		routes.append(route)
 		if route["surface"] == "road":
@@ -64,6 +63,24 @@ func _from_dict(d: Dictionary) -> void:
 	var s_arr: PackedFloat32Array = main.get("s_arr", PackedFloat32Array())
 	if s_arr.size() > 0:
 		length = s_arr[s_arr.size() - 1]
+
+## 切线(中心差分,与编辑器 bakeRoute 同公式)+ 逐点弧长累加
+func _compute_tans_s(route: Dictionary) -> void:
+	var pts: PackedVector3Array = route["pts"]
+	var n := pts.size()
+	var tans := PackedVector3Array()
+	var s_arr := PackedFloat32Array()
+	tans.resize(n)
+	s_arr.resize(n)
+	for i in n:
+		var a := pts[maxi(i - 1, 0)]
+		var b := pts[mini(i + 1, n - 1)]
+		var d := b - a
+		var L := d.length()
+		tans[i] = d / L if L > 1e-4 else Vector3(0.0, 0.0, -1.0)
+		s_arr[i] = 0.0 if i == 0 else s_arr[i - 1] + pts[i - 1].distance_to(pts[i])
+	route["tans"] = tans
+	route["s_arr"] = s_arr
 
 ## 平面(xz)三点曲率半径,∞ 记 9999
 func _compute_radii(route: Dictionary) -> void:

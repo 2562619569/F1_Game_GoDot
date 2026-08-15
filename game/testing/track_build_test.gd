@@ -20,13 +20,13 @@ func _ready() -> void:
 	if data == null:
 		_finish()
 		return
-	ok(absf(data.length - 538.0) < 5.0, "主路长度 %.1fm" % data.length)
-	ok(data.routes.size() == 2, "路由数 %d(主路+分支)" % data.routes.size())
+	ok(absf(data.length - 4110.4) < 2.0, "主路长度 %.1fm" % data.length)
+	ok(data.routes.size() == 3, "路由数 %d(主路+分支)" % data.routes.size())
 
 	var p0 := data.point_at(0.0)
 	ok(p0.distance_to(Vector3(0, 0, 0)) < 1.0, "point_at(0) 在起点 %s" % [p0])
 	var pe := data.point_at(data.length)
-	ok(absf(pe.z + 500.0) < 2.0 and absf(pe.x + 12.0) < 2.0, "point_at(L) 在终点 %s" % [pe])
+	ok(absf(pe.x - 901.207) < 2.0 and absf(pe.z + 267.257) < 2.0, "point_at(L) 在终点 %s" % [pe])
 
 	var pr: Array = data.progress_at(p0, -1)
 	ok(float(pr[0]) < 1.0, "起点进度 ≈ 0(%.2f)" % float(pr[0]))

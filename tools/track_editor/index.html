@@ -1232,7 +1232,7 @@ function buildExport(){
   rebakeAll();
   const bk = {};
   for (const r of S.routes){
-    bk[r.id] = baked[r.id].samples.map(p => [r3(p.x), r3(p.y), r3(p.z), r3(p.tx), r3(p.ty), r3(p.tz), r2(p.width), r2(p.s)]);
+    bk[r.id] = baked[r.id].samples.map(p => [r3(p.x), r3(p.y), r3(p.z), r2(p.width)]);
   }
   return {
     version: 1,
@@ -1251,7 +1251,7 @@ $("btnExport").addEventListener("click", () => {
   const errs = stats.warnings.filter(w => w.lv === "err");
   if (errs.length && !confirm("存在错误:\n" + errs.map(w=>"・"+w.t).join("\n") + "\n\n仍要导出吗?")) return;
   const data = buildExport();
-  const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `map_${S.meta.id}.json`;

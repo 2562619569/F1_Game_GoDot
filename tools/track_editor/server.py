@@ -220,7 +220,7 @@ class Handler(SimpleHTTPRequestHandler):
         body.setdefault("meta", {})["id"] = int(m.group(1))
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         target = DATA_DIR / ("map_%s.json" % m.group(1))
-        target.write_text(json.dumps(body, indent=1, ensure_ascii=False), encoding="utf-8")
+        target.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         print("[track_editor] saved %s" % target.relative_to(ROOT))
         return self._json(200, {"ok": True, "file": str(target.relative_to(ROOT)).replace("\\", "/")})
 
