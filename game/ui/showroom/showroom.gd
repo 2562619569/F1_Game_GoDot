@@ -25,6 +25,7 @@ const BUTTON_SCENE := preload("res://game/ui/components/button_default.tscn")
 @onready var close_btn: Button = $UI/Root/CloseButton
 
 var current_car_id := 0
+var _car: Vehicle = null        # 当前展车（自由刚体，落在展台上）
 var _group := ButtonGroup.new()
 var _dragging := false
 
@@ -38,8 +39,9 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
-	elif event is InputEventMouseMotion and _dragging:
-		turntable.rotate_y(-event.relative.x * drag_sensitivity)
+	elif event is InputEventMouseMotion and _dragging and is_instance_valid(_car):
+		# 刚体不宜挂在旋转的父节点下，改为绕自身中心旋转车体（转台效果）
+		_car.rotate_y(-event.relative.x * drag_sensitivity)
 	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):
 		var ids := car_ids()
 		var i := ids.find(current_car_id)
@@ -62,20 +64,20 @@ func car_ids() -> Array[int]:
 	ids.sort()
 	return ids
 
-## 切换展台车辆：重新装配美术与物理参数（冻结展示，不参与模拟）
+## 切换展台车辆：重新装配美术与物理参数，不冻结，让车落到展台上自然沉降
 func show_car(car_id: int) -> void:
 	if not Settings.car.data.has(car_id):
 		push_warning("Showroom: Car 表无 %d，忽略切换" % car_id)
 		return
 	current_car_id = car_id
-	for child in turntable.get_children():
-		child.queue_free()
+	if is_instance_valid(_car):
+		_car.queue_free()
 	var v: Vehicle = CAR_SCENE.instantiate()
-	v.position = Vector3(0, 0.5, 0)
+	v.position = Vector3(0, 1.0, 0)
 	CarBuilder.apply(v, Settings.car.data[car_id], Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
 	CarMeshBuilder.attach_visual(v, car_id)
-	turntable.add_child(v)
-	v.freeze = true
+	add_child(v)
+	_car = v
 	var cfg: Dictionary = Settings.car.data[car_id]
 	car_name_label.text = "%s  ·  %s  ·  %d kg" % [cfg.name, String(cfg.drive).to_upper(), int(cfg.weight)]
 	car_desc_label.text = String(cfg.desc)
@@ -101,7 +103,43 @@ func _setup_world() -> void:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.32, 0.34, 0.38)
 		ground.material_override = mat
+	_setup_ground_collision()
+	_setup_platform()
 	camera.look_at(Vector3(0, 0.5, 0))
+
+## 地面静态碰撞：车万一滑出展台也不会无限坠落
+func _setup_ground_collision() -> void:
+	if ground.get_node_or_null(^"GroundBody") != null:
+		return
+	var body := StaticBody3D.new()
+	body.name = "GroundBody"
+	var shape := CollisionShape3D.new()
+	shape.shape = WorldBoundaryShape3D.new()
+	body.add_child(shape)
+	ground.add_child(body)
+
+## 中央展台：带碰撞的矮圆柱，车直接落到台面上
+func _setup_platform() -> void:
+	if turntable.get_child_count() > 0:
+		return
+	var body := StaticBody3D.new()
+	var mesh := MeshInstance3D.new()
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = 3.0
+	cylinder.bottom_radius = 3.0
+	cylinder.height = 0.3
+	mesh.mesh = cylinder
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.24, 0.26, 0.3)
+	mesh.material_override = mat
+	var shape := CollisionShape3D.new()
+	shape.shape = CylinderShape3D.new()
+	shape.shape.radius = 3.0
+	shape.shape.height = 0.3
+	body.add_child(mesh)
+	body.add_child(shape)
+	body.position = Vector3(0, 0.15, 0)  # 台面在 y=0.3
+	turntable.add_child(body)
 
 func _setup_buttons() -> void:
 	for child in bottom_bar.get_children():

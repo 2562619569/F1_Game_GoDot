@@ -31,10 +31,9 @@ func _ready() -> void:
 	get_tree().quit(1 if failures > 0 else 0)
 
 func _check_rotation() -> void:
-	var table: Node3D = showroom.get_node("Turntable")
-	var y0 := table.rotation.y
+	var y0: float = showroom._car.rotation.y   # showroom 为 Variant，需显式类型供下方 is_equal_approx 使用
 	await get_tree().create_timer(0.3).timeout
-	_note(is_equal_approx(table.rotation.y, y0), "无输入时展台不自动旋转")
+	_note(is_equal_approx(showroom._car.rotation.y, y0), "无输入时车辆不自动旋转")
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
@@ -45,12 +44,12 @@ func _check_rotation() -> void:
 	var release := press.duplicate()
 	release.pressed = false
 	showroom._unhandled_input(release)
-	_note(is_equal_approx(table.rotation.y, y0 - 100.0 * showroom.drag_sensitivity), "拖拽 100px 展台随之旋转")
+	_note(is_equal_approx(showroom._car.rotation.y, y0 - 100.0 * showroom.drag_sensitivity), "拖拽 100px 车辆随之旋转")
 	showroom._unhandled_input(press)  # 重新按下再反向拖拽
 	drag.relative = Vector2(-50, 0)
 	showroom._unhandled_input(drag)
 	showroom._unhandled_input(release)
-	_note(table.rotation.y > y0 - 100.0 * showroom.drag_sensitivity, "反向拖拽可回转")
+	_note(showroom._car.rotation.y > y0 - 100.0 * showroom.drag_sensitivity, "反向拖拽可回转")
 
 func _check_close() -> void:
 	var state := {"closed": false}
@@ -63,7 +62,7 @@ func _check_close() -> void:
 func _check_initial() -> void:
 	_note(showroom.current_car_id == 601, "初始展示 Car 表最小 id 601")
 	var live := _live_cars()
-	_note(live.size() == 1 and live[0] is Vehicle and live[0].freeze, "展台上有且仅有一辆冻结的 Vehicle")
+	_note(live.size() == 1 and live[0] is Vehicle and not live[0].freeze, "展台上有且仅有一辆未冻结的 Vehicle")
 	var bar: HBoxContainer = showroom.get_node("UI/Root/BottomBar")
 	_note(bar.get_children().size() == Settings.car.data.size(), "底部按钮数 = Car 表车辆数")
 	_note(_pressed_id() == 601, "当前 601 对应按钮为按下态")
@@ -78,8 +77,8 @@ func _check_switch(cid: int) -> void:
 
 func _live_cars() -> Array:
 	var out: Array = []
-	for c in showroom.get_node("Turntable").get_children():
-		if not c.is_queued_for_deletion():
+	for c in showroom.get_children():
+		if c is Vehicle and not c.is_queued_for_deletion():
 			out.append(c)
 	return out
 
