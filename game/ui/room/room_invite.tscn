@@ -3,4 +3,113 @@
 [ext_resource type="Script" path="res://game/ui/room/room_invite.gd" id="1_room"]
 
 [node name="RoomInvite" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_room")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.03, 0.042, 0.06, 1)
+
+[node name="Center" type="VBoxContainer" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Center"]
+text = "ROOM CREATED"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 40
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+
+[node name="Margin" type="MarginContainer" parent="Center/Panel"]
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 16
+
+[node name="Inner" type="VBoxContainer" parent="Center/Panel/Margin"]
+theme_override_constants/separation = 10
+
+[node name="RoomCodeLabel" type="Label" parent="Center/Panel/Margin/Inner"]
+unique_name_in_owner = true
+text = "ROOM  MR-????"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_override_font_sizes/font_size = 30
+
+[node name="Slots" type="HBoxContainer" parent="Center/Panel/Margin/Inner"]
+unique_name_in_owner = true
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="SlotP1" type="PanelContainer" parent="Center/Panel/Margin/Inner/Slots"]
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP1"]
+custom_minimum_size = Vector2(110, 0)
+text = "YOU
+(HOST)"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+
+[node name="SlotP2" type="PanelContainer" parent="Center/Panel/Margin/Inner/Slots"]
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP2"]
+custom_minimum_size = Vector2(110, 0)
+text = "RIVAL-1
+(AI · READY)"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+
+[node name="SlotP3" type="PanelContainer" parent="Center/Panel/Margin/Inner/Slots"]
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP3"]
+custom_minimum_size = Vector2(110, 0)
+text = "RIVAL-2
+(AI · READY)"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+
+[node name="SlotP4" type="PanelContainer" parent="Center/Panel/Margin/Inner/Slots"]
+
+[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP4"]
+custom_minimum_size = Vector2(110, 0)
+text = "RIVAL-3
+(AI · READY)"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+
+[node name="InfoLabel" type="Label" parent="Center"]
+unique_name_in_owner = true
+text = "4 sub-rounds · Loot & tune between rounds · Final round decides the champion"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="Spacer" type="Control" parent="Center"]
+custom_minimum_size = Vector2(0, 16)
+
+[node name="PlayButton" type="Button" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 64)
+theme_override_font_sizes/font_size = 24
+text = "PLAY"
+
+[node name="BackButton" type="Button" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(300, 44)
+theme_override_font_sizes/font_size = 16
+text = "BACK TO LOBBY"
