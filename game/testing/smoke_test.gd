@@ -59,6 +59,7 @@ func _run() -> void:
 	main.current_ui.card_buttons[0].pressed.emit()
 	await get_tree().process_frame
 	ok(main.race != null and main.race.round_idx == 1, "round 1 started")
+	ok(main.current_ui == null, "car select UI hidden during race")
 	ok(main.race.racers.size() == 4, "4 racers on grid (1 player + 3 AI)")
 	var pv: Vehicle = main.race.player_racer.vehicle
 	ok(pv.is_in_group("player_car"), "player car in player_car group")
@@ -87,6 +88,7 @@ func _run() -> void:
 	main.race.debug_finish_all()
 	await until(func(): return main.current_ui != null and main.current_ui.name == "Intermission", 10.0)
 	ok(main.current_ui.name == "Intermission", "round ended -> intermission garage")
+	ok(main.hud == null, "race HUD hidden during intermission")
 	ok(main.current_ui._results.size() == 4, "round result lists 4 racers")
 	ok(main.current_ui._rewards.size() >= 1, "rank rewards granted (%d parts)" % main.current_ui._rewards.size())
 
@@ -112,6 +114,7 @@ func _run() -> void:
 	garage.ready_btn.pressed.emit()
 	await until(func(): return main.race != null and main.race.round_idx == 2, 10.0)
 	ok(main.race.round_idx == 2, "intermission READY -> round 2 started")
+	ok(main.current_ui == null, "intermission UI hidden during race")
 	var torque_r2: float = main.race.player_torque_applied
 	ok(torque_r2 > torque_r1 * 1.01, "engine mod raised REAL vehicle torque (%.0f -> %.0f NM)" % [torque_r1, torque_r2])
 
@@ -121,7 +124,7 @@ func _run() -> void:
 		guard += 1
 		if main.race != null and not main.race.ended:
 			main.race.debug_finish_all()
-		await until(func(): return main.current_ui.name == "Intermission" or main.current_ui.name == "FinalResult", 10.0)
+		await until(func(): return main.current_ui != null and (main.current_ui.name == "Intermission" or main.current_ui.name == "FinalResult"), 10.0)
 		if main.current_ui.name == "FinalResult":
 			break
 		main.current_ui.ready_btn.pressed.emit()

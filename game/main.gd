@@ -33,10 +33,14 @@ func _unhandled_input(event: InputEvent) -> void:
 # ---------------- 界面切换 ----------------
 
 func _set_ui(c: Control) -> void:
-	if current_ui != null:
-		current_ui.queue_free()
+	_clear_ui()
 	current_ui = c
 	ui.add_child(c)
+
+func _clear_ui() -> void:
+	if current_ui != null:
+		current_ui.queue_free()
+		current_ui = null
 
 func show_lobby() -> void:
 	_clear_race()
@@ -65,6 +69,7 @@ func show_car_select() -> void:
 
 func start_round() -> void:
 	_clear_race()
+	_clear_ui()  # 隐藏选车/局间界面，比赛期间只显示竞速 HUD
 	race = RaceManager.new()
 	world.add_child(race)
 	race.setup(Match.round_index + 1)
@@ -77,6 +82,9 @@ func start_round() -> void:
 func _on_round_ended(results: Array, rewards: Array) -> void:
 	# 等待 HUD 显示最后一帧结算提示后切界面
 	await get_tree().create_timer(1.2).timeout
+	if hud != null:  # 隐藏竞速 HUD，避免与局间/结算界面叠加
+		hud.queue_free()
+		hud = null
 	if Match.round_cfg().is_final:
 		show_final_result()
 		return
