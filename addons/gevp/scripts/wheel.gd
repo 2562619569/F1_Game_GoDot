@@ -17,6 +17,15 @@ extends RayCast3D
 ## try parenting it to a [Node3D] and using that as the wheel node instead.
 @export var wheel_node : Node3D
 
+## Visual suspension smoothing frequency (Hz), critically damped. 0 disables.
+## 本地修改：轮子视觉 y 不再每帧直写悬挂长度，而是过临界阻尼弹簧平滑，消除物理帧噪声直传画面。
+@export var visual_smoothing_frequency := 12.0
+
+const _SpringDamper := preload("res://game/car/spring_damper.gd")
+
+var _vis_spring_y := 0.0
+var _vis_spring_vel := 0.0
+
 var wheel_mass := 15.0
 var tire_radius := 0.3
 var tire_width := 205.0
@@ -79,7 +88,16 @@ var vehicle : Vehicle
 
 func _process(delta : float) -> void:
 	if wheel_node:
-		wheel_node.position.y = minf(0.0, -spring_current_length)
+		var target_y := minf(0.0, -spring_current_length)
+		if visual_smoothing_frequency > 0.0:
+			# 本地修改：视觉悬挂长度平滑（SpringDamper 为临界阻尼弹簧，帧率无关）
+			var smoothed := _SpringDamper.spring(_vis_spring_y, _vis_spring_vel, target_y,
+					visual_smoothing_frequency, 1.0, delta)
+			_vis_spring_y = smoothed.x
+			_vis_spring_vel = smoothed.y
+			wheel_node.position.y = _vis_spring_y
+		else:
+			wheel_node.position.y = target_y
 		if not is_zero_approx(beam_axle):
 			var wheel_lookat_vector := (opposite_wheel.transform * opposite_wheel.wheel_node.position) - (transform * wheel_node.position)
 			wheel_node.rotation.z = wheel_lookat_vector.angle_to(Vector3.RIGHT * beam_axle) * signf(wheel_lookat_vector.y * beam_axle)
