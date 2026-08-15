@@ -21,11 +21,46 @@ ROOT = Path(__file__).resolve().parent.parent.parent  # 项目根
 DATA_DIR = ROOT / "game" / "race" / "tracks" / "data"
 
 
-def port_in_use(port):
-    # 主动连接探测:Windows 的 SO_REUSEADDR 允许重复绑定,靠 bind 异常检测不可靠
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.5)
-        return s.connect_ex(("127.0.0.1", port)) == 0
+def port_responding():
+    # Only treat the port as healthy when it actually answers HTTP.
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://127.0.0.1:%d/api/maps" % PORT, timeout=0.8) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def kill_port_owner():
+    # Port is occupied but not responding. Usually a stale server.py left a
+    # dead listener behind, so terminate only PIDs listening on this port.
+    try:
+        import os
+        import signal
+        import subprocess
+        out = subprocess.check_output(
+            ["netstat", "-ano", "-p", "tcp"],
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[1].endswith(":%d" % PORT):
+                if parts[3] != "LISTENING":
+                    continue
+                pid = int(parts[-1])
+                if pid <= 0:
+                    continue
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except Exception:
+                    try:
+                        subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=False)
+                    except Exception:
+                        pass
+        time.sleep(0.4)
+    except Exception:
+        pass
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -102,13 +137,20 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     no_browser = "--no-browser" in sys.argv
-    if port_in_use(PORT):
-        # 服务已在跑:直接打开页面复用现有实例
-        print("端口 %d 已被占用:服务可能已在运行,直接打开页面" % PORT)
+    if port_responding():
+        # Healthy server already running, just open the page.
         if not no_browser:
             webbrowser.open(URL)
         raise SystemExit(0)
-    srv = HTTPServer(("127.0.0.1", PORT), Handler)
+    # Port may still be held by a stale listener that does not answer HTTP.
+    # On Windows SO_REUSEADDR can allow binding alongside it, so clear it first.
+    kill_port_owner()
+    try:
+        srv = HTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        print("Port %d is occupied but not responding; clearing stale listener and retrying..." % PORT)
+        kill_port_owner()
+        srv = HTTPServer(("127.0.0.1", PORT), Handler)
     if not no_browser:
         threading.Thread(
             target=lambda: (time.sleep(0.6), webbrowser.open(URL)),
