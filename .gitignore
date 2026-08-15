@@ -18,3 +18,5 @@ __pycache__/
 *.py[cod]
 tools/track_editor/server.log
 tools/track_editor/server.err.log
+tools/art_editor/server.log
+tools/art_editor/server.err.log
