@@ -1,6 +1,208 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://game/ui/garage/intermission.gd" id="1_garage"]
+[ext_resource type="Script" path="res://game/ui/garage/radar_chart.gd" id="2_radar"]
 
 [node name="Intermission" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_garage")
+
+[node name="Background" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.056, 0.08, 1)
+
+[node name="Root" type="VBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 20.0
+offset_right = -30.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="Header" type="Label" parent="Root"]
+unique_name_in_owner = true
+text = "INTERMISSION"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 28
+
+[node name="Columns" type="HBoxContainer" parent="Root"]
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="ResultPanel" type="PanelContainer" parent="Root/Columns"]
+size_flags_horizontal = 3
+
+[node name="Margin" type="MarginContainer" parent="Root/Columns/ResultPanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Root/Columns/ResultPanel/Margin"]
+theme_override_constants/separation = 6
+
+[node name="ResultTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
+text = "ROUND RESULT"
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 20
+
+[node name="ResultsGrid" type="GridContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
+unique_name_in_owner = true
+columns = 3
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 4
+
+[node name="Spacer" type="Control" parent="Root/Columns/ResultPanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 10)
+
+[node name="RewardsTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
+text = "RANK REWARDS →"
+theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_override_font_sizes/font_size = 18
+
+[node name="RewardsBox" type="VBoxContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_constants/separation = 2
+
+[node name="GaragePanel" type="PanelContainer" parent="Root/Columns"]
+custom_minimum_size = Vector2(420, 0)
+size_flags_horizontal = 3
+
+[node name="Margin" type="MarginContainer" parent="Root/Columns/GaragePanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Root/Columns/GaragePanel/Margin"]
+theme_override_constants/separation = 8
+
+[node name="GarageTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+unique_name_in_owner = true
+text = "LOADOUT"
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 20
+
+[node name="SlotBox" type="HBoxContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_constants/separation = 8
+
+[node name="BackpackTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+text = "BACKPACK (unlimited)"
+theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="BackpackScroll" type="ScrollContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 180)
+size_flags_vertical = 3
+
+[node name="BackpackGrid" type="GridContainer" parent="Root/Columns/GaragePanel/Margin/VBox/BackpackScroll"]
+unique_name_in_owner = true
+columns = 3
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+size_flags_horizontal = 3
+
+[node name="HintLabel" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+unique_name_in_owner = true
+autowrap_mode = 3
+text = "Click a part to equip / unequip. Same category replaces."
+theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="Radar" type="Control" parent="Root/Columns/GaragePanel/Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 220)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("2_radar")
+
+[node name="NextPanel" type="PanelContainer" parent="Root/Columns"]
+size_flags_horizontal = 3
+
+[node name="Margin" type="MarginContainer" parent="Root/Columns/NextPanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="Root/Columns/NextPanel/Margin"]
+theme_override_constants/separation = 8
+
+[node name="NextTitle" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+text = "NEXT ROUND"
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 20
+
+[node name="MapName" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+text = "Lakeside Highway"
+theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_override_font_sizes/font_size = 24
+
+[node name="WeatherChip" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+text = "[ Sunny ]"
+theme_override_font_sizes/font_size = 18
+
+[node name="MapDesc" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+autowrap_mode = 3
+text = "Long straights under open sky."
+theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="Advice" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+autowrap_mode = 3
+text = "» Go full top speed build."
+theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="Spacer" type="Control" parent="Root/Columns/NextPanel/Margin/VBox"]
+size_flags_vertical = 3
+
+[node name="CountdownLabel" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+text = "40"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_override_font_sizes/font_size = 34
+
+[node name="ReadyButton" type="Button" parent="Root/Columns/NextPanel/Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+theme_override_font_sizes/font_size = 18
+text = "READY  ·  START NEXT ROUND"
+
+[node name="ToastLabel" type="Label" parent="."]
+unique_name_in_owner = true
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -170.0
+offset_right = 400.0
+offset_bottom = -120.0
+grow_horizontal = 2
+text = ""
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.6)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 20
