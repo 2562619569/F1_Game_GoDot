@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://game/ui/lobby/lobby.gd" id="1_lobby"]
+[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="2_backdrop"]
+[ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="3_btn_primary"]
+[ext_resource type="PackedScene" path="res://game/ui/components/button_default.tscn" id="4_btn_default"]
 
 [node name="Lobby" type="Control"]
 anchors_preset = 15
@@ -10,13 +13,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_lobby")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0.055, 0.075, 0.106, 1)
+[node name="Background" parent="." instance=ExtResource("2_backdrop")]
 
 [node name="Center" type="VBoxContainer" parent="."]
 anchor_left = 0.5
@@ -28,27 +25,27 @@ grow_vertical = 2
 theme_override_constants/separation = 18
 
 [node name="Title" type="Label" parent="Center"]
+theme_type_variation = &"Accent"
+theme_override_font_sizes/font_size = 64
 text = "MODRACER"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
-theme_override_font_sizes/font_size = 64
 
 [node name="Subtitle" type="Label" parent="Center"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 18
 text = "Arcade Racing · Session-based Roguelite Tuning"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 18
 
 [node name="Spacer" type="Control" parent="Center"]
 custom_minimum_size = Vector2(0, 40)
 
-[node name="CreateRoomButton" type="Button" parent="Center"]
+[node name="CreateRoomButton" parent="Center" instance=ExtResource("3_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 64)
 theme_override_font_sizes/font_size = 22
 text = "CREATE ROOM"
 
-[node name="ExitButton" type="Button" parent="Center"]
+[node name="ExitButton" parent="Center" instance=ExtResource("4_btn_default")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 48)
 theme_override_font_sizes/font_size = 16
@@ -60,7 +57,7 @@ anchor_bottom = 1.0
 offset_top = -44.0
 offset_bottom = -16.0
 grow_horizontal = 2
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 14
 text = "WASD Drive · SPACE Handbrake · Q/E Tactical · F10 Debug Finish"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 14

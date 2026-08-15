@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://game/ui/result/final_result.gd" id="1_final"]
+[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="2_backdrop"]
+[ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="3_btn_primary"]
 
 [node name="FinalResult" type="Control"]
 anchors_preset = 15
@@ -10,13 +12,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_final")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0.055, 0.075, 0.106, 1)
+[node name="Background" parent="." instance=ExtResource("2_backdrop")]
 
 [node name="Root" type="VBoxContainer" parent="."]
 anchors_preset = 15
@@ -31,23 +27,23 @@ grow_vertical = 2
 theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="Root"]
+theme_type_variation = &"Accent"
+theme_override_font_sizes/font_size = 34
 text = "FINAL SHOWDOWN COMPLETE"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
-theme_override_font_sizes/font_size = 34
 
 [node name="ChampionLabel" type="Label" parent="Root"]
 unique_name_in_owner = true
+theme_type_variation = &"Warm"
+theme_override_font_sizes/font_size = 44
 text = "🏆  CHAMPION  🏆"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
-theme_override_font_sizes/font_size = 44
 
 [node name="NoteLabel" type="Label" parent="Root"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 14
 text = "First across the line in the final round takes the crown."
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 14
 
 [node name="Spacer" type="Control" parent="Root"]
 custom_minimum_size = Vector2(0, 12)
@@ -62,7 +58,7 @@ size_flags_horizontal = 4
 [node name="Spacer2" type="Control" parent="Root"]
 size_flags_vertical = 3
 
-[node name="BackButton" type="Button" parent="Root"]
+[node name="BackButton" parent="Root" instance=ExtResource("3_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(360, 60)
 theme_override_font_sizes/font_size = 20

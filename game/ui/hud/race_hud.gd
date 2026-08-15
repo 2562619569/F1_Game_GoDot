@@ -55,9 +55,9 @@ func _refresh_tactical() -> void:
 			c.queue_free()
 		for i in ui_data.size():
 			var p := PanelContainer.new()
-			UIStyle.wrap(p)
 			var l := Label.new()
-			UIStyle.label(l, 14, UIStyle.ACCENT)
+			l.theme_type_variation = &"Accent"
+			l.add_theme_font_size_override("font_size", 14)
 			p.add_child(l)
 			tactical_box.add_child(p)
 	for i in ui_data.size():
@@ -78,9 +78,9 @@ func _on_standings(order: Array) -> void:
 		var r: Dictionary = order[i]
 		var l := Label.new()
 		l.text = "P%d  %s%s" % [i + 1, r.name, "  ✔" if r.finished else ""]
-		UIStyle.label(l, 15)
+		l.add_theme_font_size_override("font_size", 15)
 		if r.is_player:
-			l.add_theme_color_override("font_color", UIStyle.ACCENT_WARM)
+			l.theme_type_variation = &"Warm"
 		standings_box.add_child(l)
 
 func _on_toast(text: String) -> void:

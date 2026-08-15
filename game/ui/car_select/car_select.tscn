@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://game/ui/car_select/car_select.gd" id="1_carsel"]
+[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="2_backdrop"]
+[ext_resource type="PackedScene" path="res://game/ui/components/panel_card.tscn" id="3_panel"]
+[ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="4_btn_primary"]
 
 [node name="CarSelect" type="Control"]
 anchors_preset = 15
@@ -10,13 +13,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_carsel")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0.055, 0.075, 0.106, 1)
+[node name="Background" parent="." instance=ExtResource("2_backdrop")]
 
 [node name="Root" type="VBoxContainer" parent="."]
 anchors_preset = 15
@@ -31,17 +28,17 @@ grow_vertical = 2
 theme_override_constants/separation = 24
 
 [node name="Title" type="Label" parent="Root"]
+theme_type_variation = &"Accent"
+theme_override_font_sizes/font_size = 36
 text = "CHOOSE YOUR CHASSIS"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
-theme_override_font_sizes/font_size = 36
 
 [node name="Cards" type="HBoxContainer" parent="Root"]
 alignment = 1
 theme_override_constants/separation = 24
 size_flags_vertical = 3
 
-[node name="Card1" type="PanelContainer" parent="Root/Cards"]
+[node name="Card1" parent="Root/Cards" instance=ExtResource("3_panel")]
 custom_minimum_size = Vector2(300, 0)
 size_flags_vertical = 3
 
@@ -55,14 +52,14 @@ theme_override_constants/margin_bottom = 12
 theme_override_constants/separation = 8
 
 [node name="NameLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
-text = "Brute Power"
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_type_variation = &"Warm"
 theme_override_font_sizes/font_size = 26
+text = "Brute Power"
 
 [node name="DriveLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
-text = "RWD  ·  1500 kg"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 15
+text = "RWD  ·  1500 kg"
 
 [node name="Bars" type="VBoxContainer" parent="Root/Cards/Card1/Margin/VBox"]
 theme_override_constants/separation = 2
@@ -72,76 +69,76 @@ theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow"]
 custom_minimum_size = Vector2(110, 0)
-text = "TOP SPEED"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "TOP SPEED"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow"]
-text = "████████··"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "████████··"
 
 [node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow2"]
 custom_minimum_size = Vector2(110, 0)
-text = "ACCEL"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "ACCEL"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow2"]
-text = "███████···"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "███████···"
 
 [node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow3"]
 custom_minimum_size = Vector2(110, 0)
-text = "HANDLING"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "HANDLING"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow3"]
-text = "█████·····"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "█████·····"
 
 [node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow4"]
 custom_minimum_size = Vector2(110, 0)
-text = "OFFROAD"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "OFFROAD"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow4"]
-text = "███·······"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "███·······"
 
 [node name="SlotsLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
-text = "SLOTS: 4 PERF + 1 FUNC"
-theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_type_variation = &"Good"
 theme_override_font_sizes/font_size = 15
+text = "SLOTS: 4 PERF + 1 FUNC"
 
 [node name="DescLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 size_flags_vertical = 3
 text = "Straight-line monster."
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 13
 
-[node name="SelectButton1" type="Button" parent="Root/Cards/Card1/Margin/VBox"]
+[node name="SelectButton1" parent="Root/Cards/Card1/Margin/VBox" instance=ExtResource("4_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 theme_override_font_sizes/font_size = 18
 text = "SELECT"
 
-[node name="Card2" type="PanelContainer" parent="Root/Cards"]
+[node name="Card2" parent="Root/Cards" instance=ExtResource("3_panel")]
 custom_minimum_size = Vector2(300, 0)
 size_flags_vertical = 3
 
@@ -155,14 +152,14 @@ theme_override_constants/margin_bottom = 12
 theme_override_constants/separation = 8
 
 [node name="NameLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-text = "Agile Sprinter"
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_type_variation = &"Warm"
 theme_override_font_sizes/font_size = 26
+text = "Agile Sprinter"
 
 [node name="DriveLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-text = "FWD  ·  1100 kg"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 15
+text = "FWD  ·  1100 kg"
 
 [node name="Bars" type="VBoxContainer" parent="Root/Cards/Card2/Margin/VBox"]
 theme_override_constants/separation = 2
@@ -172,76 +169,76 @@ theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow"]
 custom_minimum_size = Vector2(110, 0)
-text = "TOP SPEED"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "TOP SPEED"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow"]
-text = "███████···"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "███████···"
 
 [node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow2"]
 custom_minimum_size = Vector2(110, 0)
-text = "ACCEL"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "ACCEL"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow2"]
-text = "███████···"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "███████···"
 
 [node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow3"]
 custom_minimum_size = Vector2(110, 0)
-text = "HANDLING"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "HANDLING"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow3"]
-text = "█████████·"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "█████████·"
 
 [node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow4"]
 custom_minimum_size = Vector2(110, 0)
-text = "OFFROAD"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "OFFROAD"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow4"]
-text = "█████·····"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "█████·····"
 
 [node name="SlotsLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-text = "SLOTS: 4 PERF + 1 FUNC"
-theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_type_variation = &"Good"
 theme_override_font_sizes/font_size = 15
+text = "SLOTS: 4 PERF + 1 FUNC"
 
 [node name="DescLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 size_flags_vertical = 3
 text = "Rock solid on twisty tracks."
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 13
 
-[node name="SelectButton2" type="Button" parent="Root/Cards/Card2/Margin/VBox"]
+[node name="SelectButton2" parent="Root/Cards/Card2/Margin/VBox" instance=ExtResource("4_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 theme_override_font_sizes/font_size = 18
 text = "SELECT"
 
-[node name="Card3" type="PanelContainer" parent="Root/Cards"]
+[node name="Card3" parent="Root/Cards" instance=ExtResource("3_panel")]
 custom_minimum_size = Vector2(300, 0)
 size_flags_vertical = 3
 
@@ -255,14 +252,14 @@ theme_override_constants/margin_bottom = 12
 theme_override_constants/separation = 8
 
 [node name="NameLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-text = "All-Rounder"
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_type_variation = &"Warm"
 theme_override_font_sizes/font_size = 26
+text = "All-Rounder"
 
 [node name="DriveLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-text = "AWD  ·  1300 kg"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 15
+text = "AWD  ·  1300 kg"
 
 [node name="Bars" type="VBoxContainer" parent="Root/Cards/Card3/Margin/VBox"]
 theme_override_constants/separation = 2
@@ -272,70 +269,70 @@ theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow"]
 custom_minimum_size = Vector2(110, 0)
-text = "TOP SPEED"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "TOP SPEED"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow"]
-text = "████████·"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "████████·"
 
 [node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow2"]
 custom_minimum_size = Vector2(110, 0)
-text = "ACCEL"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "ACCEL"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow2"]
-text = "████████·"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "████████·"
 
 [node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow3"]
 custom_minimum_size = Vector2(110, 0)
-text = "HANDLING"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "HANDLING"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow3"]
-text = "████████·"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "████████·"
 
 [node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
 [node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow4"]
 custom_minimum_size = Vector2(110, 0)
-text = "OFFROAD"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
+text = "OFFROAD"
 
 [node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow4"]
-text = "████████·"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
+text = "████████·"
 
 [node name="SlotsLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-text = "SLOTS: 3 PERF + 2 FUNC"
-theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_type_variation = &"Good"
 theme_override_font_sizes/font_size = 15
+text = "SLOTS: 3 PERF + 2 FUNC"
 
 [node name="DescLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 size_flags_vertical = 3
 text = "Strong launch grip, all-terrain."
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 13
 
-[node name="SelectButton3" type="Button" parent="Root/Cards/Card3/Margin/VBox"]
+[node name="SelectButton3" parent="Root/Cards/Card3/Margin/VBox" instance=ExtResource("4_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 theme_override_font_sizes/font_size = 18

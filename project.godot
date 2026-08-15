@@ -24,6 +24,10 @@ config/icon="res://addons/gevp/icon.png"
 Settings="*res://config/dist/settings.gd"
 Match="*res://game/autoload/match.gd"
 
+[gui]
+
+theme/custom="res://game/ui/theme/modracer_theme.tres"
+
 [input]
 
 Brakes={

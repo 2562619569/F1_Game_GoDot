@@ -1,7 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://game/ui/garage/intermission.gd" id="1_garage"]
 [ext_resource type="Script" path="res://game/ui/garage/radar_chart.gd" id="2_radar"]
+[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="3_backdrop"]
+[ext_resource type="PackedScene" path="res://game/ui/components/panel_card.tscn" id="4_panel"]
+[ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="5_btn_primary"]
 
 [node name="Intermission" type="Control"]
 anchors_preset = 15
@@ -11,13 +14,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_garage")
 
-[node name="Background" type="ColorRect" parent="."]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0.04, 0.056, 0.08, 1)
+[node name="Background" parent="." instance=ExtResource("3_backdrop")]
 
 [node name="Root" type="VBoxContainer" parent="."]
 anchors_preset = 15
@@ -33,16 +30,16 @@ theme_override_constants/separation = 12
 
 [node name="Header" type="Label" parent="Root"]
 unique_name_in_owner = true
+theme_type_variation = &"Accent"
+theme_override_font_sizes/font_size = 28
 text = "INTERMISSION"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
-theme_override_font_sizes/font_size = 28
 
 [node name="Columns" type="HBoxContainer" parent="Root"]
 size_flags_vertical = 3
 theme_override_constants/separation = 16
 
-[node name="ResultPanel" type="PanelContainer" parent="Root/Columns"]
+[node name="ResultPanel" parent="Root/Columns" instance=ExtResource("4_panel")]
 size_flags_horizontal = 3
 
 [node name="Margin" type="MarginContainer" parent="Root/Columns/ResultPanel"]
@@ -55,9 +52,9 @@ theme_override_constants/margin_bottom = 12
 theme_override_constants/separation = 6
 
 [node name="ResultTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
-text = "ROUND RESULT"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 20
+text = "ROUND RESULT"
 
 [node name="ResultsGrid" type="GridContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
 unique_name_in_owner = true
@@ -69,15 +66,15 @@ theme_override_constants/v_separation = 4
 custom_minimum_size = Vector2(0, 10)
 
 [node name="RewardsTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
-text = "RANK REWARDS →"
-theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
+theme_type_variation = &"Good"
 theme_override_font_sizes/font_size = 18
+text = "RANK REWARDS →"
 
 [node name="RewardsBox" type="VBoxContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_override_constants/separation = 2
 
-[node name="GaragePanel" type="PanelContainer" parent="Root/Columns"]
+[node name="GaragePanel" parent="Root/Columns" instance=ExtResource("4_panel")]
 custom_minimum_size = Vector2(420, 0)
 size_flags_horizontal = 3
 
@@ -92,18 +89,18 @@ theme_override_constants/separation = 8
 
 [node name="GarageTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
-text = "LOADOUT"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 20
+text = "LOADOUT"
 
 [node name="SlotBox" type="HBoxContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_override_constants/separation = 8
 
 [node name="BackpackTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
-text = "BACKPACK (unlimited)"
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
+theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 14
+text = "BACKPACK (unlimited)"
 
 [node name="BackpackScroll" type="ScrollContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
 custom_minimum_size = Vector2(0, 180)
@@ -118,10 +115,10 @@ size_flags_horizontal = 3
 
 [node name="HintLabel" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Click a part to equip / unequip. Same category replaces."
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 12
 
 [node name="Radar" type="Control" parent="Root/Columns/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
@@ -130,7 +127,7 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("2_radar")
 
-[node name="NextPanel" type="PanelContainer" parent="Root/Columns"]
+[node name="NextPanel" parent="Root/Columns" instance=ExtResource("4_panel")]
 size_flags_horizontal = 3
 
 [node name="Margin" type="MarginContainer" parent="Root/Columns/NextPanel"]
@@ -144,46 +141,46 @@ theme_override_constants/separation = 8
 
 [node name="NextTitle" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
-text = "NEXT ROUND"
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
+theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 20
+text = "NEXT ROUND"
 
 [node name="MapName" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
-text = "Lakeside Highway"
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
+theme_type_variation = &"Warm"
 theme_override_font_sizes/font_size = 24
+text = "Lakeside Highway"
 
 [node name="WeatherChip" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
-text = "[ Sunny ]"
 theme_override_font_sizes/font_size = 18
+text = "[ Sunny ]"
 
 [node name="MapDesc" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 14
 autowrap_mode = 3
 text = "Long straights under open sky."
-theme_override_colors/font_color = Color(0.561, 0.627, 0.71, 1)
-theme_override_font_sizes/font_size = 14
 
 [node name="Advice" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
+theme_type_variation = &"Good"
+theme_override_font_sizes/font_size = 14
 autowrap_mode = 3
 text = "» Go full top speed build."
-theme_override_colors/font_color = Color(0.345, 0.839, 0.553, 1)
-theme_override_font_sizes/font_size = 14
 
 [node name="Spacer" type="Control" parent="Root/Columns/NextPanel/Margin/VBox"]
 size_flags_vertical = 3
 
 [node name="CountdownLabel" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
+theme_type_variation = &"Accent"
+theme_override_font_sizes/font_size = 34
 text = "40"
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(0.224, 0.773, 0.812, 1)
-theme_override_font_sizes/font_size = 34
 
-[node name="ReadyButton" type="Button" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="ReadyButton" parent="Root/Columns/NextPanel/Margin/VBox" instance=ExtResource("5_btn_primary")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 56)
 theme_override_font_sizes/font_size = 18
@@ -200,9 +197,7 @@ offset_top = -170.0
 offset_right = 400.0
 offset_bottom = -120.0
 grow_horizontal = 2
+theme_type_variation = &"Warm"
+theme_override_font_sizes/font_size = 20
 text = ""
 horizontal_alignment = 1
-theme_override_colors/font_color = Color(1, 0.69, 0.227, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.6)
-theme_override_constants/outline_size = 4
-theme_override_font_sizes/font_size = 20

@@ -23,23 +23,24 @@ func _ready() -> void:
 	var corner := Label.new()
 	table_grid.add_child(corner)
 	for n in names:
-		var h := Label.new()
-		h.text = String(n)
-		UIStyle.title(h, 17, UIStyle.ACCENT if n == Match.PLAYER_NAME else UIStyle.TEXT)
-		table_grid.add_child(h)
+		table_grid.add_child(_label(String(n), 17, &"Accent" if n == Match.PLAYER_NAME else &""))
 
 	for ri in Match.round_history.size():
-		var rl := Label.new()
-		rl.text = "ROUND %d" % (ri + 1)
-		UIStyle.dim(rl, 15)
-		table_grid.add_child(rl)
+		table_grid.add_child(_label("ROUND %d" % (ri + 1), 15, &"Dim"))
 		for n in names:
 			var rank := "-"
 			for e in Match.round_history[ri]:
 				if e.name == n:
 					rank = "P%d" % e.rank
-			var cell := Label.new()
-			cell.text = rank
+			var cell := _label(rank, 16, &"Warm" if n == Match.PLAYER_NAME else &"")
 			cell.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			UIStyle.label(cell, 16, UIStyle.ACCENT_WARM if n == Match.PLAYER_NAME else UIStyle.TEXT)
 			table_grid.add_child(cell)
+
+## 动态生成表格标签：字号覆盖主题默认 16，variation 引用主题角色变体
+func _label(text: String, size: int, variation := &"") -> Label:
+	var l := Label.new()
+	l.text = text
+	if variation != &"":
+		l.theme_type_variation = variation
+	l.add_theme_font_size_override("font_size", size)
+	return l

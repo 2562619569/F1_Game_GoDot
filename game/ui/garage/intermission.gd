@@ -47,10 +47,14 @@ func _ready() -> void:
 
 # ---------------- 静态数据渲染 ----------------
 
-func _cell(text: String, font_size: int, color: Color) -> Label:
+## 动态生成单元格：默认样式来自全局主题，仅覆盖非默认字号/颜色
+func _cell(text: String, font_size := 16, color := UIStyle.TEXT) -> Label:
 	var l := Label.new()
 	l.text = text
-	UIStyle.label(l, font_size, color)
+	if font_size != 16:
+		l.add_theme_font_size_override("font_size", font_size)
+	if color != UIStyle.TEXT:
+		l.add_theme_color_override("font_color", color)
 	return l
 
 func _render_results() -> void:
@@ -93,7 +97,6 @@ func _refresh() -> void:
 		var equipped := Match.equipped.has(cat)
 		b.text = "%s\n%s" % [CATEGORY_LABELS[cat], Match.part_cfg(Match.equipped[cat]).name if equipped else "— empty —"]
 		b.custom_minimum_size = Vector2(150, 56)
-		UIStyle.style_button(b)
 		b.disabled = not equipped
 		if equipped:
 			var pid: int = Match.equipped[cat]
@@ -116,7 +119,6 @@ func _refresh() -> void:
 			pc.name, CATEGORY_LABELS[pc.category], pc.rarity,
 			pc.top_speed, pc.accel, pc.grip_road, pc.grip_offroad, pc.grip_wet, pc.aero, pc.landing, pc.mass]
 		b.custom_minimum_size = Vector2(130, 40)
-		UIStyle.style_button(b)
 		b.add_theme_color_override("font_color", Match.RARITY_COLORS[int(pc.rarity)])
 		var cat: String = pc.category
 		b.pressed.connect(func():
