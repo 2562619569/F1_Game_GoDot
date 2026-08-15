@@ -14,6 +14,7 @@ const CarSelectScene := preload("res://game/ui/car_select/car_select.tscn")
 const GarageScene := preload("res://game/ui/garage/intermission.tscn")
 const HudScene := preload("res://game/ui/hud/race_hud.tscn")
 const FinalScene := preload("res://game/ui/result/final_result.tscn")
+const ShowroomScene := preload("res://game/ui/showroom/showroom.tscn")
 
 @onready var world: Node3D = $World
 @onready var ui: CanvasLayer = $UI
@@ -21,6 +22,7 @@ const FinalScene := preload("res://game/ui/result/final_result.tscn")
 var current_ui: Control
 var race: RaceManager
 var hud: Control
+var showroom: Node3D
 
 func _ready() -> void:
 	show_lobby()
@@ -44,10 +46,12 @@ func _clear_ui() -> void:
 
 func show_lobby() -> void:
 	_clear_race()
+	_clear_showroom()
 	Match.reset()
 	var s := LobbyScene.instantiate()
 	_set_ui(s)
 	s.create_room_pressed.connect(show_room)
+	s.showroom_pressed.connect(show_showroom)
 	flow_changed.emit("lobby")
 
 func show_room() -> void:
@@ -64,6 +68,21 @@ func show_car_select() -> void:
 		Match.car_id = cid
 		start_round())
 	flow_changed.emit("car_select")
+
+# ---------------- 展示间（独立 3D 场景，关闭即返回大厅） ----------------
+
+func show_showroom() -> void:
+	_clear_ui()
+	_clear_race()
+	showroom = ShowroomScene.instantiate()
+	add_child(showroom)  # 自带相机与 CanvasLayer UI，直接挂主节点
+	showroom.close_requested.connect(show_lobby)
+	flow_changed.emit("showroom")
+
+func _clear_showroom() -> void:
+	if showroom != null:
+		showroom.queue_free()
+		showroom = null
 
 # ---------------- 回合循环 ----------------
 

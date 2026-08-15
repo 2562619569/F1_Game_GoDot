@@ -45,6 +45,12 @@ custom_minimum_size = Vector2(340, 64)
 theme_override_font_sizes/font_size = 22
 text = "CREATE ROOM"
 
+[node name="ShowroomButton" parent="Center" instance=ExtResource("4_btn_default")]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 48)
+theme_override_font_sizes/font_size = 16
+text = "SHOWROOM"
+
 [node name="ExitButton" parent="Center" instance=ExtResource("4_btn_default")]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(340, 48)
