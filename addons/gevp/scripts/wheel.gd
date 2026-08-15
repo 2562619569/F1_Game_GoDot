@@ -32,7 +32,7 @@ var tire_width := 205.0
 var ackermann := 0.15
 var contact_patch := 0.2
 var braking_grip_multiplier := 1.4
-var surface_type := ""
+var surface_type := "Road"
 var tire_stiffnesses := { "Road" : 5.0, "Dirt" : 0.5, "Grass" : 0.5 }
 var coefficient_of_friction := { "Road" : 2.0, "Dirt" : 1.4, "Grass" : 1.0 }
 var rolling_resistance := { "Road" : 1.0, "Dirt" : 2.0, "Grass" : 4.0 }
@@ -109,6 +109,10 @@ func initialize() -> void:
 	set_target_position(Vector3.DOWN * (spring_length + tire_radius))
 	vehicle = get_parent()
 	max_spring_length = spring_length
+	# 射线忽略自己车体，避免把车身当地面
+	add_exception(vehicle)
+	if not coefficient_of_friction.has(surface_type):
+		surface_type = "Road"
 	current_cof = coefficient_of_friction[surface_type]
 	current_rolling_resistance = rolling_resistance[surface_type]
 	current_lateral_grip_assist = lateral_grip_assist[surface_type]
@@ -175,15 +179,18 @@ func process_forces(opposite_compression : float, braking : bool, delta : float)
 		last_collider = get_collider()
 		last_collision_point = get_collision_point()
 		last_collision_normal = get_collision_normal()
+		# 只把已知表面组当地面类型，避免打到车体等非地面碰撞体时字典越界
 		var surface_groups : Array[StringName] = last_collider.get_groups()
-		if surface_groups.size() > 0:
-			if surface_type != surface_groups[0]:
-				surface_type = surface_groups[0]
-				current_cof = coefficient_of_friction[surface_type]
-				current_rolling_resistance = rolling_resistance[surface_type]
-				current_lateral_grip_assist = lateral_grip_assist[surface_type]
-				current_longitudinal_grip_ratio = longitudinal_grip_ratio[surface_type]
-				current_tire_stiffness = 1000000.0 + 8000000.0 * tire_stiffnesses[surface_type]
+		for group in surface_groups:
+			if coefficient_of_friction.has(group):
+				if surface_type != String(group):
+					surface_type = String(group)
+					current_cof = coefficient_of_friction[surface_type]
+					current_rolling_resistance = rolling_resistance[surface_type]
+					current_lateral_grip_assist = lateral_grip_assist[surface_type]
+					current_longitudinal_grip_ratio = longitudinal_grip_ratio[surface_type]
+					current_tire_stiffness = 1000000.0 + 8000000.0 * tire_stiffnesses[surface_type]
+				break
 	else:
 		last_collider = null
 	
