@@ -102,5 +102,31 @@ pw.dispatchEvent(new window.Event("input", { bubbles: true }));
 await new Promise(r => setTimeout(r, 600));
 ok(Math.abs(window.eval("S.width_default") - 30) < 0.01, "默认宽度输入联动");
 
+// ---- 9. 完赛预估(速度剖面法) ----
+const estInfo1 = ($("estInfo").textContent || "").trim();
+ok(estInfo1.includes("预估完赛"), "预估信息显示: " + estInfo1.replace(/\s+/g, " ").slice(0, 80));
+const est1 = window.eval("estimateFinish(baked['main'], carTable.find(c => c.id === 601))");
+ok(est1 && est1.time > 8 && est1.time < 60, "601 号车预估时间合理(" + est1.time.toFixed(1) + "s,均速 " + (est1.avg * 3.6).toFixed(0) + "km/h)");
+const est2 = window.eval("estimateFinish(baked['main'], carTable.find(c => c.id === 602))");
+ok(est1.time < est2.time, "极速更高的 601 比 602 快(" + est1.time.toFixed(1) + "s < " + est2.time.toFixed(1) + "s)");
+ok(est1.speeds.length === window.eval("baked['main'].samples.length"), "速度剖面与采样点对齐");
+// 车辆切换
+const carSel = $("pCar");
+carSel.value = "603";
+carSel.dispatchEvent(new window.Event("change", { bubbles: true }));
+ok(( $("estInfo").textContent || "").includes("预估完赛"), "切换车辆后预估刷新");
+
+// ---- 10. Car 配表解析(真实 car.gd 片段) ----
+const carGdSample = `
+var data = \\
+{
+601:{ "id":601,  "name":'Brute Power',  "drive":'RWD',  "top_speed":320,  "accel":7.5,  "handling":5.5,  "gear_ratios":[3.6, 2.2, 1.6], },
+602:{ "id":602,  "name":'Agile Sprinter',  "drive":'FWD',  "top_speed":260,  "accel":7.0,  "handling":9.0, },
+}
+`;
+const cars = window.eval("parseCarGd(" + JSON.stringify(carGdSample) + ")");
+ok(cars.length === 2 && cars[0].id === 601 && cars[0].name === "Brute Power", "parseCarGd 解析条目(" + cars.length + " 辆)");
+ok(cars[0].top_speed === 320 && typeof cars[0].gear_ratios === "string", "数值解析为数字、数组保持字符串");
+
 console.log("========== %d checks, %d failures ==========", checks, failures);
 process.exit(failures ? 1 : 0);
