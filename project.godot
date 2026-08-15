@@ -21,7 +21,7 @@ config/icon="res://addons/gevp/icon.png"
 
 [autoload]
 
-Settings="*res://settings/dist/settings.gd"
+Settings="*res://config/dist/settings.gd"
 Match="*res://game/autoload/match.gd"
 
 [input]

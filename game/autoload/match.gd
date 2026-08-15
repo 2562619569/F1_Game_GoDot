@@ -3,7 +3,7 @@ extends Node
 ## 大厅 / 房间 / 选车 / 回合 / 局间整备共享的数据集中在这里，
 ## 界面场景只做展示与交互，方便后期替换 UI 而不动数据逻辑。
 ##
-## 数据来源全部为 settings/dist 配表（Settings autoload），
+## 数据来源全部为 config/dist 配表（Settings autoload），
 ## 不在代码里硬编码赛制数值。
 
 signal backpack_changed

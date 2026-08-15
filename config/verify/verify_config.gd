@@ -24,6 +24,6 @@ func _ready() -> void:
 		Settings.game.data.size(), Settings.round.data.size(), Settings.loot.data.size(), Settings.rank_reward.data.size()])
 	for l in lines:
 		print(l)
-	var f = FileAccess.open("res://settings/verify/verify_result.txt", FileAccess.WRITE)
+	var f = FileAccess.open("res://config/verify/verify_result.txt", FileAccess.WRITE)
 	f.store_string("\n".join(lines))
 	get_tree().quit(0)

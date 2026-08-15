@@ -2,7 +2,7 @@
 """
 ModRacer 配表生成脚本（仅首次建表用）。
 
-生成 settings/data/ModRacer.xlsx，包含 3 张表：
+生成 config/data/ModRacer.xlsx，包含 3 张表：
   - 车型-car    基础载具底盘
   - 改件-part   性能/战术改件
   - 地图-map    赛道与词缀
@@ -90,7 +90,7 @@ for row in map_rows:
 cover = wb.create_sheet("~首页", 0)
 cover["B2"] = "ModRacer 配表"
 cover["B3"] = "本文件为游戏数值唯一真理源头，修改后运行 ee gen-all 导出。"
-cover["B4"] = "表结构规范见 settings/tools/make_modracer_xlsx.py 头部注释。"
+cover["B4"] = "表结构规范见 config/tools/make_modracer_xlsx.py 头部注释。"
 
 wb.save("data/ModRacer.xlsx")
 print("已生成 data/ModRacer.xlsx")
