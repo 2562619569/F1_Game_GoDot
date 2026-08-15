@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import webbrowser
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 PORT = 8137
@@ -63,6 +63,69 @@ def kill_port_owner():
         pass
 
 
+
+CONFIG_XLSX = ROOT / "config" / "data" / "ModRacer.xlsx"
+
+
+def read_map_table():
+    """Read the Map-map sheet from ModRacer.xlsx as the source of truth."""
+    rows_out = []
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(str(CONFIG_XLSX), data_only=True, read_only=True)
+        try:
+            for ws in wb.worksheets:
+                if "map" not in ws.title.lower():
+                    continue
+                header_idx = {}
+                for ri, row in enumerate(ws.iter_rows(values_only=True)):
+                    if not header_idx:
+                        for ci, cell in enumerate(row):
+                            val = str(cell).strip().lower() if cell is not None else ""
+                            if val in ("id", "name", "desc", "weather"):
+                                header_idx[val] = ci
+                        if "id" not in header_idx or "name" not in header_idx:
+                            continue
+                        continue
+                    if row[header_idx["id"]] is None:
+                        continue
+                    get = lambda key: row[header_idx[key]] if header_idx.get(key) is not None and header_idx[key] < len(row) else None
+                    rows_out.append({
+                        "id": int(get("id")),
+                        "name": str(get("name") or ""),
+                        "desc": str(get("desc") or ""),
+                        "weather": str(get("weather") or ""),
+                    })
+                break
+        finally:
+            wb.close()
+    except Exception:
+        rows_out = []
+    return rows_out
+
+
+def default_map_template(meta):
+    """Build a minimal editable map JSON from xlsx metadata when no file exists yet."""
+    return {
+        "version": 1,
+        "meta": {"id": meta["id"], "name": meta["name"]},
+        "width_default": 24,
+        "grid": {"count": 4, "row_gap": 8, "col_gap": 7, "first_row_offset": 6},
+        "options": {"walls": True, "wall_height": 1.2, "sample_step": 2},
+        "routes": [
+            {
+                "id": "main",
+                "surface": "road",
+                "points": [
+                    {"x": 0, "y": 0, "z": 0, "width": None},
+                    {"x": 0, "y": 0, "z": -90, "width": None},
+                ],
+            }
+        ],
+        "baked": {},
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -90,29 +153,56 @@ class Handler(SimpleHTTPRequestHandler):
     # ---- GET: 静态文件 + /api/maps 列表 + /api/maps/<id> 单图 ----
     def do_GET(self):
         if self.path == "/api/maps":
-            maps = []
+            table = read_map_table()
+            files = {}
             if DATA_DIR.is_dir():
                 for f in sorted(DATA_DIR.glob("map_*.json")):
                     try:
                         d = json.loads(f.read_text(encoding="utf-8"))
                         baked = d.get("baked", {}).get("main", [])
-                        maps.append({
-                            "id": int(d.get("meta", {}).get("id", 0)),
+                        mid = int(d.get("meta", {}).get("id", 0))
+                        files[mid] = {
                             "name": str(d.get("meta", {}).get("name", "")),
                             "length": round(float(baked[-1][7])) if baked else 0,
-                        })
+                        }
                     except (ValueError, KeyError, IndexError):
-                        pass  # 跳过损坏文件
+                        pass  # skip broken files
+            maps = []
+            if table:
+                for m in table:
+                    fid = m["id"]
+                    fj = files.get(fid)
+                    maps.append({
+                        "id": fid,
+                        "name": (fj or m)["name"],
+                        "weather": m.get("weather", ""),
+                        "desc": m.get("desc", ""),
+                        "has_file": fid in files,
+                        "length": fj["length"] if fj else 0,
+                    })
+            else:
+                for fid, fj in sorted(files.items()):
+                    maps.append({
+                        "id": fid,
+                        "name": fj["name"],
+                        "weather": "",
+                        "desc": "",
+                        "has_file": True,
+                        "length": fj["length"],
+                    })
             return self._json(200, {"maps": maps})
         m = re.match(r"^/api/maps/(\d+)$", self.path)
         if m:
             f = DATA_DIR / ("map_%s.json" % m.group(1))
-            if not f.is_file():
+            if f.is_file():
+                try:
+                    return self._json(200, json.loads(f.read_text(encoding="utf-8")))
+                except ValueError:
+                    return self._json(400, {"error": "map json broken"})
+            meta = next((row for row in read_map_table() if row["id"] == int(m.group(1))), None)
+            if not meta:
                 return self._json(404, {"error": "map not found"})
-            try:
-                return self._json(200, json.loads(f.read_text(encoding="utf-8")))
-            except ValueError:
-                return self._json(400, {"error": "map json broken"})
+            return self._json(200, default_map_template(meta))
         return super().do_GET()
 
     # ---- POST: /api/maps/<id> 写回地图 ----
@@ -146,11 +236,11 @@ if __name__ == "__main__":
     # On Windows SO_REUSEADDR can allow binding alongside it, so clear it first.
     kill_port_owner()
     try:
-        srv = HTTPServer(("127.0.0.1", PORT), Handler)
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     except OSError:
         print("Port %d is occupied but not responding; clearing stale listener and retrying..." % PORT)
         kill_port_owner()
-        srv = HTTPServer(("127.0.0.1", PORT), Handler)
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     if not no_browser:
         threading.Thread(
             target=lambda: (time.sleep(0.6), webbrowser.open(URL)),

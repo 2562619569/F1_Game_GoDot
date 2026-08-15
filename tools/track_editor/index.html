@@ -105,16 +105,20 @@ let mapList = [];        // [{id, name, length}]
 let mapSelId = 0;        // 0 = 新地图(按 meta.id 输入保存)
 
 async function apiProbe(){
-  try {
-    const r = await fetch(API_BASE + "/maps");
-    const d = await r.json();
-    mapList = d.maps || [];
-    apiOnline = true;
-  } catch (e) {
-    apiOnline = false;
-    mapList = [];
+  for (let attempt = 0; attempt < 3; attempt++){
+    try {
+      const r = await fetch(API_BASE + "/maps", { cache: "no-store" });
+      const d = await r.json();
+      mapList = d.maps || [];
+      apiOnline = true;
+      return true;
+    } catch (e) {
+      apiOnline = false;
+      mapList = [];
+      if (attempt < 2) await new Promise(res => setTimeout(res, 400));
+    }
   }
-  return apiOnline;
+  return false;
 }
 
 async function apiLoadMap(id){
@@ -1148,7 +1152,7 @@ function bindPanel(){
   const mapSel = $("pMap");
   if (mapSel){
     mapSel.innerHTML = '<option value="0">— 新地图(按下方 id 保存)—</option>' +
-      mapList.map(m => `<option value="${m.id}" ${m.id === mapSelId ? "selected" : ""}>${m.id}: ${m.name}(${m.length}m)</option>`).join("");
+      mapList.map(m => `<option value="${m.id}" ${m.id === mapSelId ? "selected" : ""}>${m.id}: ${m.name}(${m.has_file ? m.length + "m" : "\u672a\u5efa"})</option>`).join("");
     mapSel.addEventListener("change", e => { mapSelId = parseInt(e.target.value) || 0; });
     mapSel.disabled = !apiOnline;
   }
