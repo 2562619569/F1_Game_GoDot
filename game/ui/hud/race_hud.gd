@@ -73,7 +73,7 @@ func _on_standings(order: Array) -> void:
 	for c in standings_box.get_children():
 		c.queue_free()
 	for i in order.size():
-		var r: Dictionary = order[i]
+		var r: Racer = order[i]
 		var l := Label.new()
 		l.text = "P%d  %s%s" % [i + 1, r.name, "  ✔" if r.finished else ""]
 		l.add_theme_font_size_override("font_size", 15)
