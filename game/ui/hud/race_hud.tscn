@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://game/ui/hud/race_hud.gd" id="1_hud"]
+
+[node name="RaceHUD" type="Control"]
+script = ExtResource("1_hud")

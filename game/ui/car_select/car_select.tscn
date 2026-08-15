@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://game/ui/car_select/car_select.gd" id="1_carsel"]
+
+[node name="CarSelect" type="Control"]
+script = ExtResource("1_carsel")
