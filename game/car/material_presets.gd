@@ -18,7 +18,7 @@ static func _get_flake_texture() -> NoiseTexture2D:
 		var noise := FastNoiseLite.new()
 		noise.noise_type = FastNoiseLite.TYPE_CELLULAR
 		noise.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
-		noise.frequency = 0.35   # 单元细密：贴图内已有多个 voronoi 单元
+		noise.frequency = 0.9   # 细粒噪声：配原版 flake_scale=150 呈金属漆颗粒感
 		_flake_tex = NoiseTexture2D.new()
 		_flake_tex.width = 256
 		_flake_tex.height = 256
@@ -27,7 +27,7 @@ static func _get_flake_texture() -> NoiseTexture2D:
 
 ## 各预设的参数默认值（编辑器生成 entry 时同构，保证两端一致）
 const DEFAULT_PARAMS := {
-	"paint": {"color": "#c23a2f", "flake_amount": 0.5, "clearcoat": 1.0},
+	"paint": {"color": "#c23a2f", "glancing": "#2a0d0b", "clearcoat": 1.0},
 	"headlight_lens": {"color": "#ffffff", "alpha": 0.35},
 	"glass": {"color": "#05060a", "alpha": 1.0},
 }
@@ -54,13 +54,13 @@ static func _build(key: String, entry: Dictionary) -> ShaderMaterial:
 	var base: Color = Color.from_string(str(params.get("color", "")), Color.WHITE)
 	match key:
 		"paint":
-			var glancing := base.darkened(0.65)
+			# 原版双色：facing 正视主色 + glancing 掠射色
+			var glancing := Color.from_string(str(params.get("glancing", "")), base.darkened(0.65))
 			var sm := ShaderMaterial.new()
 			sm.shader = _PaintShader
 			sm.set_shader_parameter("facing_color", Vector3(base.r, base.g, base.b))
 			sm.set_shader_parameter("glancing_color", Vector3(glancing.r, glancing.g, glancing.b))
 			sm.set_shader_parameter("flake_texture", _get_flake_texture())
-			sm.set_shader_parameter("flake_amount", clampf(float(params.get("flake_amount", 0.5)), 0.0, 1.0))
 			sm.set_shader_parameter("clearcoat_amount", clampf(float(params.get("clearcoat", 1.0)), 0.0, 1.0))
 			return sm
 		"headlight_lens", "glass":

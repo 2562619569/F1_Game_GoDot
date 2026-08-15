@@ -35,7 +35,7 @@ var PRESET_SLOTS = [
   { key: 'paint', label: '车漆', color: 0xe0524a,
     params: [
       { key: 'color', label: '颜色', type: 'color' },
-      { key: 'flake_amount', label: '金属闪烁', type: 'range' },
+      { key: 'glancing', label: '掠射色', type: 'color' },
       { key: 'clearcoat', label: '清漆', type: 'range' }
     ] },
   { key: 'headlight_lens', label: '大灯罩', color: 0x8fd8ff,
@@ -50,7 +50,7 @@ var PRESET_SLOTS = [
     ] }
 ];
 var PRESET_DEFAULT_PARAMS = {
-  paint: { color: '#c23a2f', flake_amount: 0.5, clearcoat: 1.0 },
+  paint: { color: '#c23a2f', glancing: '#2a0d0b', clearcoat: 1.0 },
   headlight_lens: { color: '#ffffff', alpha: 0.35 },
   glass: { color: '#05060a', alpha: 1.0 }
 };
@@ -933,12 +933,14 @@ async function loadMeta(kind, id) {
     var psOut = {};
     PRESET_SLOTS.forEach(function (s) {
       var e = ps[s.key];
-      psOut[s.key] = (e && typeof e === 'object')
-        ? {
-          material: e.material || null,
-          params: Object.assign({}, PRESET_DEFAULT_PARAMS[s.key], e.params || {})
-        }
-        : null;
+      if (!(e && typeof e === 'object')) { psOut[s.key] = null; return; }
+      // 参数按当前槽位定义过滤（旧版遗留键如 flake_amount 直接丢弃），缺失补默认值
+      var allowed = {};
+      s.params.forEach(function (p) { allowed[p.key] = true; });
+      var merged = Object.assign({}, PRESET_DEFAULT_PARAMS[s.key]);
+      var src = e.params || {};
+      Object.keys(src).forEach(function (k) { if (allowed[k]) merged[k] = src[k]; });
+      psOut[s.key] = { material: e.material || null, params: merged };
     });
     j.material_presets = psOut;
     AXLES.forEach(function (k) {
