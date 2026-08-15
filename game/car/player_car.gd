@@ -16,10 +16,13 @@ var stealth_left := 0.0
 var nitro_left := 0.0
 var nitro_power := 0.0
 var _was_stealth := false
+var _auto_follower: TrackFollower = null  # 冒烟测试自动驾驶
 
 func setup(v: Vehicle, race_ref: Node3D) -> void:
 	vehicle = v
 	race = race_ref
+	# get() 安全访问:调试场景的 race_ref 没有 track_data 属性
+	_auto_follower = TrackFollower.new(race_ref.get("track_data") if race_ref != null else null, 0.0)
 	tactical.clear()
 	for cat in Match.FUNC_CATEGORIES:
 		if Match.equipped.has(cat):
@@ -36,12 +39,8 @@ func _physics_process(delta: float) -> void:
 		vehicle.handbrake_input = 1.0
 		return
 
-	if Match.auto_test:  # 冒烟测试：自动驾驶 + 沿中线
-		vehicle.throttle_input = 1.0
-		vehicle.brake_input = 0.0
-		vehicle.handbrake_input = 0.0
-		vehicle.steering_input = clampf(
-			vehicle.global_position.x * 0.045 + vehicle.linear_velocity.x * 0.10, -1.0, 1.0)
+	if Match.auto_test:  # 冒烟测试：自动驾驶沿赛道中心线
+		_auto_follower.drive(vehicle)
 	else:
 		vehicle.throttle_input = pow(Input.get_action_strength("Throttle"), 2.0)
 		vehicle.brake_input = Input.get_action_strength("Brakes")

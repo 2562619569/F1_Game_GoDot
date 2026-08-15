@@ -16,7 +16,7 @@ var card_buttons: Array = []
 
 func _ready() -> void:
 	card_buttons = [%SelectButton1, %SelectButton2, %SelectButton3]
-	var car_ids := Settings.car.data.keys()
+	var car_ids: Array = Settings.car.data.keys()
 	car_ids.sort()
 	for i in card_buttons.size():
 		var cid := int(car_ids[i])

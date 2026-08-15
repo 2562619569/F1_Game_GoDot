@@ -8,3 +8,5 @@ config/verify/verify_result.txt
 game/testing/shots/
 # 美术资源（本地管理，不入库；结构见 docs/美术资源与车辆结构.md）
 /art/
+# 赛道编辑器测试依赖（jsdom，npm i 恢复）
+tools/track_editor/node_modules/

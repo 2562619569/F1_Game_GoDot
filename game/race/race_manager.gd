@@ -26,9 +26,10 @@ const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.
 var round_idx := 1
 var map_id := 1
 var weather := "sunny"
-var racers: Array = []  # {name, is_player, vehicle, ctrl, finished, finish_time, progress}
+var racers: Array = []  # {name, is_player, vehicle, ctrl, finished, finish_time, progress, hint}
 var player_racer := {}
 var track: Node3D
+var track_data: TrackData = null  # 编辑器 JSON 赛道(为 null = 旧版 track_test 直线图)
 var race_time := 0.0
 var countdown_left := 0.0
 var racing := false
@@ -44,8 +45,7 @@ func setup(idx: int) -> void:
 	weather = String(Match.map_cfg(map_id).weather)
 
 	# --- 赛道 + 环境 ---
-	track = TRACK_SCENE.instantiate()
-	add_child(track)
+	_load_track()
 	track.setup(weather)
 	track.get_node("FinishGate").body_entered.connect(_on_finish_body)
 	var we := WorldEnvironment.new()
@@ -76,6 +76,20 @@ func setup(idx: int) -> void:
 	for r in racers:
 		r.vehicle.freeze = true
 	countdown_tick.emit(str(int(ceili(countdown_left))))
+
+## 赛道加载:map_id 有编辑器 JSON 则程序化生成,否则回退测试直线图
+func _load_track() -> void:
+	var path := "res://game/race/tracks/data/map_%d.json" % map_id
+	if FileAccess.file_exists(path):
+		track_data = TrackData.load_json(path)
+	if track_data != null:
+		var builder := TrackBuilder.new()
+		add_child(builder)
+		builder.build(track_data)
+		track = builder
+	else:
+		track = TRACK_SCENE.instantiate()
+		add_child(track)
 
 func _spawn_loot() -> void:
 	for route in ["main", "hazard"]:
@@ -133,6 +147,8 @@ func _make_racer(rname: String, cid: int, stats: Dictionary, grid_no: int, torqu
 	var v: Vehicle = CAR_SCENE.instantiate()
 	var gpos := _grid_position(grid_no)
 	root.position = gpos
+	if track_data != null:
+		root.rotation.y = track_data.grid_heading(grid_no)  # 车头朝起点切线
 	v.position = Vector3(0, 0.95, 0)
 	CarBuilder.apply(v, Match.car_cfg(cid), stats, weather, torque_scale)
 	CarMeshBuilder.attach_visual(v, cid)  # 美术装配，缺资源自动回退占位视觉
@@ -156,14 +172,22 @@ func _make_racer(rname: String, cid: int, stats: Dictionary, grid_no: int, torqu
 		snd.vehicle = v  # engine_sound.gd 导出类型是 Vehicle 节点
 		v.add_child(snd)
 	else:
-		ctrl.setup(v, gpos.x)
+		ctrl.setup(v, track_data, _grid_lane(grid_no))
 	return {"name": rname, "is_player": is_player, "vehicle": v, "ctrl": ctrl,
-		"finished": false, "finish_time": 0.0, "progress": 0.0}
+		"finished": false, "finish_time": 0.0, "progress": 0.0, "hint": -1}
 
 func _grid_position(grid_no: int) -> Vector3:
+	if track_data != null:
+		return track_data.grid_position(grid_no)
 	var z := -6.0 + float(grid_no - 1) * 8.0
 	var x := -3.5 if grid_no % 2 == 1 else 3.5
 	return Vector3(x, 0, z)
+
+## AI 车道:有赛道数据 = 中心线横向偏移;旧图 = 世界 x
+func _grid_lane(grid_no: int) -> float:
+	if track_data != null:
+		return track_data.grid_lane(grid_no)
+	return -3.5 if grid_no % 2 == 1 else 3.5
 
 # ---------------- 主循环 ----------------
 
@@ -190,10 +214,17 @@ func _physics_process(delta: float) -> void:
 	race_time += delta
 	var limit := float(Match.round_cfg().time_limit)
 	for r in racers:
-		r.progress = -r.vehicle.global_position.z
+		if track_data != null:
+			# 曲线赛道:弧长进度(索引作下次搜索 hint)
+			var pr: Array = track_data.progress_at(r.vehicle.global_position, int(r.get("hint", -1)))
+			r.progress = pr[0]
+			r.hint = pr[1]
+		else:
+			r.progress = -r.vehicle.global_position.z
 		# 跌落保护：掉出赛道拉回主路
 		if r.vehicle.global_position.y < -15.0:
-			r.vehicle.global_position = Vector3(0, 1.2, r.vehicle.global_position.z)
+			var rp: Vector3 = track_data.reset_point(r.vehicle.global_position) if track_data != null else Vector3(0, 1.2, r.vehicle.global_position.z)
+			r.vehicle.global_position = rp
 			r.vehicle.linear_velocity = Vector3.ZERO
 			r.vehicle.angular_velocity = Vector3.ZERO
 
@@ -260,10 +291,15 @@ func _end_round() -> void:
 		toast.emit("CHAMPION: %s" % Match.champion)
 	round_ended.emit(results, rewards)
 
-## 火箭锁定：找前方最近车辆（隐身免锁定）
+## 火箭锁定：找前方最近车辆（隐身免锁定）;前方 = 弧长进度领先
 func find_target_ahead(from: Vehicle, range_m: float):
+	var my_prog := 0.0
+	for r in racers:
+		if r.vehicle == from:
+			my_prog = r.progress
+			break
 	var best = null
-	var best_dz := 1e9
+	var best_dp := 1e9
 	for r in racers:
 		if r.vehicle == from:
 			continue
@@ -272,9 +308,9 @@ func find_target_ahead(from: Vehicle, range_m: float):
 			stealth = bool(r.ctrl.is_stealth())
 		if stealth:
 			continue
-		var dz: float = from.global_position.z - r.vehicle.global_position.z
-		if dz > 1.0 and dz <= range_m and dz < best_dz:
-			best_dz = dz
+		var dp: float = r.progress - my_prog
+		if dp > 1.0 and dp <= range_m and dp < best_dp:
+			best_dp = dp
 			best = r
 	return best
 
@@ -290,7 +326,7 @@ func _on_loot_collected(pid: int) -> void:
 func debug_spawn_loot_ahead() -> void:
 	var loot := LOOT_SCENE.instantiate()
 	var v: Vehicle = player_racer.vehicle
-	loot.position = Vector3(v.global_position.x, 0.9, v.global_position.z - 25.0)
+	loot.position = track_data.point_ahead(v.global_position, 25.0) if track_data != null else Vector3(v.global_position.x, 0.9, v.global_position.z - 25.0)
 	add_child(loot)
 	loot.setup(Match.roll_part("engine", 1), "main")
 	loot.collected.connect(_on_loot_collected)
