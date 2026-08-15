@@ -1,7 +1,7 @@
 extends Control
 ## 开局选车：3 张卡片版式在 tscn 内编辑，文字由脚本从 Car 表实时填充
 ## （配表改车不需要改场景）。
-## 对外契约：car_chosen(car_id) 信号 + card_buttons（按 Car 表 id 1~3 顺序）。
+## 对外契约：car_chosen(car_id) 信号 + card_buttons（按 Car 表 id 升序，当前 601~603）。
 
 signal car_chosen(car_id: int)
 
@@ -16,13 +16,12 @@ var card_buttons: Array = []
 
 func _ready() -> void:
 	card_buttons = [%SelectButton1, %SelectButton2, %SelectButton3]
-	var i := 1
-	for btn in card_buttons:
-		var cid := i
-		btn.pressed.connect(func(): car_chosen.emit(cid))
-		i += 1
-	for idx in 3:
-		_fill_card(get_node("Root/Cards/Card%d" % (idx + 1)), Settings.car.data[idx + 1])
+	var car_ids := Settings.car.data.keys()
+	car_ids.sort()
+	for i in card_buttons.size():
+		var cid := int(car_ids[i])
+		card_buttons[i].pressed.connect(func(): car_chosen.emit(cid))
+		_fill_card(get_node("Root/Cards/Card%d" % (i + 1)), Settings.car.data[cid])
 
 func _fill_card(card: Control, c: Dictionary) -> void:
 	var box := card.get_node("Margin/VBox")

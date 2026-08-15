@@ -12,9 +12,9 @@ signal equipped_changed
 const PLAYER_NAME := "YOU"
 ## AI 对手：名字 / 底盘 / 强度系数（作用于扭矩，制造名次差异）
 const AI_DEFS := [
-	{"name": "RIVAL-1", "car_id": 1, "skill": 1.0},
-	{"name": "RIVAL-2", "car_id": 2, "skill": 0.93},
-	{"name": "RIVAL-3", "car_id": 3, "skill": 0.87},
+	{"name": "RIVAL-1", "car_id": 601, "skill": 1.0},
+	{"name": "RIVAL-2", "car_id": 602, "skill": 0.93},
+	{"name": "RIVAL-3", "car_id": 603, "skill": 0.87},
 ]
 
 ## 性能槽类别（受 perf_slots 限制）与功能槽类别（受 func_slots 限制）
@@ -32,7 +32,7 @@ const RARITY_COLORS := [
 const RARITY_NAMES := ["", "Common", "Rare", "Epic", "Legendary"]
 
 # ---- 单局状态 ----
-var car_id := 1                    # 玩家所选底盘（Car 表 id）
+var car_id := 601                  # 玩家所选底盘（Car 表 id，601~ 段）
 var backpack: Array = []           # 无限背包：拥有的改件 id 列表
 var equipped := {}                 # category -> part_id（同类型唯一装配）
 
@@ -47,7 +47,7 @@ var auto_test := false             # 冒烟测试：玩家车自动驾驶
 var intermission_sec_override := 0 # >0 时局间倒计时用该值（测试提速）
 
 func reset() -> void:
-	car_id = 1
+	car_id = 601
 	backpack = []
 	equipped = {}
 	round_index = 0

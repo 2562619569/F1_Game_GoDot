@@ -2,7 +2,7 @@ extends Node
 
 func _ready() -> void:
 	var lines: Array[String] = []
-	var car = Settings.car.data[1]
+	var car = Settings.car.data[601]
 	lines.append("[car] %s drive=%s top_speed=%s slots=%s+%s grip=%s/%s" % [car.name, car.drive, car.top_speed, car.perf_slots, car.func_slots, car.grip_road, car.grip_offroad])
 	lines.append("[car.physics] torque=%sNM rpm=%s final=%s gears=%s split=%s steer=%sdeg" % [car.max_torque, car.max_rpm, car.final_drive, car.gear_ratios.size(), car.front_torque_split, car.max_steering_angle])
 	var part = Settings.part.data[501]
