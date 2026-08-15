@@ -16,7 +16,7 @@ const HAZARD_LOOT_POINTS := [
 	Vector3(20, 0.9, -270),
 ]
 
-func setup(weather: String) -> void:
+func setup(weather: WeatherEnv.Type) -> void:
 	var c := WeatherEnv.cfg(weather)
 	($Road/Mesh.material_override as StandardMaterial3D).albedo_color = c.road_c
 	($BranchMid/Mesh.material_override as StandardMaterial3D).albedo_color = c.dirt_c

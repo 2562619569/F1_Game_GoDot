@@ -1,6 +1,9 @@
 extends Node3D
-## 装配视觉检查：静止摆放一辆带美术装配的车，固定相机截图到 shots/，
+## 装配视觉检查：静止摆放带美术装配的车，固定相机截图到 shots/，
 ## 用于人工/自动化核对车壳与轮毂装配是否正确。
+## 602 占位车的 body.json 已标记 materials，另拍刹车 off/on 两张验证刹车灯高亮。
+
+const SHOTS_DIR := "res://game/testing/shots"
 
 func _ready() -> void:
 	Match.auto_test = true
@@ -29,24 +32,53 @@ func _ready() -> void:
 
 	var v: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
 	v.position = Vector3(0, 0.5, 0)
-	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), "sunny", 1.0)
+	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
 	var assembled := CarMeshBuilder.attach_visual(v, 601)
 	add_child(v)
 	v.freeze = true
-	print("[CHECK] assembled=%s" % assembled)
+	print("[CHECK] assembled(601)=%s" % assembled)
 
 	var cam := Camera3D.new()
 	add_child(cam)
-	cam.position = Vector3(3.2, 1.8, 3.2)
-	cam.look_at(Vector3(0, 0.45, 0))
 	cam.current = true
 
-	await get_tree().create_timer(0.6).timeout
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
-	var img := get_viewport().get_texture().get_image()
-	var dir := ProjectSettings.globalize_path("res://game/testing/shots")
-	DirAccess.make_dir_recursive_absolute(dir)
-	img.save_png(dir.path_join("car_visual_check.png"))
-	print("[SHOT] car_visual_check -> %s" % dir.path_join("car_visual_check.png"))
+	await snap(cam, Vector3(3.2, 1.8, 3.2), Vector3(0, 0.45, 0), "car_visual_check.png")
+
+	# 刹车灯：冻结车也照常跑 _physics_process，brake_amount 会向 brake_input 爬升
+	var v2: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
+	v2.position = Vector3(6.0, 0.5, 0)
+	CarBuilder.apply(v2, Match.car_cfg(602), Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
+	var assembled2 := CarMeshBuilder.attach_visual(v2, 602)
+	add_child(v2)
+	v2.freeze = true
+	print("[CHECK] assembled(602)=%s" % assembled2)
+
+	await snap(cam, Vector3(8.4, 1.0, 3.0), Vector3(6.0, 0.55, 0.2), "car_brake_off.png")
+	v2.brake_input = 1.0
+	await get_tree().create_timer(0.8).timeout
+	# 刹车灯逻辑校验（headless 也可验证）：brake_amount 已爬满，自发光应接近满刹车亮度
+	var bl := v2.get_node_or_null("BodyPivot/BodyVisual/BrakeLight") as BrakeLight
+	print("[CHECK] brake_light=%s" % (bl.debug_info() if bl else "缺失"))
+	await snap(cam, Vector3(8.4, 1.0, 3.0), Vector3(6.0, 0.55, 0.2), "car_brake_on.png")
 	get_tree().quit()
+
+func _after_draw() -> void:
+	# headless 模式 frame_post_draw 不触发会永久挂起，用短定时器兜底（截图为空图，仅窗口模式出真实像素）
+	if DisplayServer.get_name() == "headless":
+		await get_tree().create_timer(0.1).timeout
+	else:
+		await RenderingServer.frame_post_draw
+
+func snap(cam: Camera3D, pos: Vector3, look_target: Vector3, file: String) -> void:
+	cam.position = pos
+	cam.look_at(look_target)
+	await get_tree().create_timer(0.3).timeout
+	await _after_draw()
+	await _after_draw()
+	var img := get_viewport().get_texture().get_image()
+	if img == null:
+		return   # headless 空渲染器无像素，跳过截图（窗口模式正常出图）
+	var dir := ProjectSettings.globalize_path(SHOTS_DIR)
+	DirAccess.make_dir_recursive_absolute(dir)
+	img.save_png(dir.path_join(file))
+	print("[SHOT] %s -> %s" % [file, dir.path_join(file)])

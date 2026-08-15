@@ -208,8 +208,8 @@ func roll_route_drops(route: String) -> Array:
 	push_warning("Loot 表缺少路线: %s" % route)
 	return []
 
-## 回合结算：按 RankReward 表给玩家发奖励改件，返回 [改件id]
-func grant_rank_rewards(rank: int) -> Array:
+## 回合结算：按 RankReward 表计算奖励改件列表（纯计算，不入包）
+func compute_rank_rewards(rank: int) -> Array:
 	if not Settings.rank_reward.data.has(rank):
 		return []
 	var rr: Dictionary = Settings.rank_reward.data[rank]
@@ -217,11 +217,29 @@ func grant_rank_rewards(rank: int) -> Array:
 	var cats: PackedStringArray = "engine|tires|aero|chassis|tactical".split("|")
 	for i in int(rr.reward_count):
 		# 类别随机（含战术件），稀有度保底取表值
-		var pid := roll_part(cats[randi() % cats.size()], int(rr.reward_rarity_min))
-		# 若保底稀有度抽不到则向上取最近稀有度的件已在 roll_part 内处理
-		out.append(pid)
+		out.append(roll_part(cats[randi() % cats.size()], int(rr.reward_rarity_min)))
+	return out
+
+## 回合结算：计算并发放奖励改件到背包，返回 [改件id]
+func grant_rank_rewards(rank: int) -> Array:
+	var out := compute_rank_rewards(rank)
+	for pid in out:
 		add_to_backpack(pid)
 	return out
+
+## 回合结算的唯一写入口：RaceManager 产出 RoundResult 后由这里提交到全局状态
+## （发车位 / 奖励入包 / 回合历史 / 下回合地图 / 冠军）。
+## 未来联机或独立结算系统只需替换本方法，RaceManager 不再直写这些字段。
+func commit_round(res: RoundResult) -> Array:
+	next_grid = res.next_grid.duplicate()
+	var rewards := compute_rank_rewards(res.player_rank)
+	for pid in rewards:
+		add_to_backpack(pid)
+	round_history.append(res.results)
+	roll_upcoming_map()
+	if res.champion != "" and champion == "":
+		champion = res.champion
+	return rewards
 
 ## 名次 -> 下回合发车位（倒序发车：第 1 名发最后）
 func grid_for_rank(rank: int, racer_count: int) -> int:

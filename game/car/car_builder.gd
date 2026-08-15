@@ -19,7 +19,7 @@ const K_AERO_STAB := 0.15           # aero +1 → 横摆稳定强度
 const K_LANDING_BUMP := 0.03        # landing +1 → 缓冲止点/落地稳定 +3%
 const K_LANDING_UPRIGHT := 0.06     # landing +1 → 空中回正弹簧 +6%
 
-static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, weather: String, torque_scale := 1.0) -> void:
+static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, weather: WeatherEnv.Type, torque_scale := 1.0) -> void:
 	# --- 底盘基础参数（Car 表，字段名与 vehicle.gd 导出变量一一对应）---
 	v.vehicle_mass = maxf(500.0, float(cfg.weight) + stats.mass)
 	v.max_torque = float(cfg.max_torque) * (1.0 + stats.accel * K_ACCEL_TORQUE) * torque_scale

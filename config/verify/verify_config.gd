@@ -8,7 +8,7 @@ func _ready() -> void:
 	var part = Settings.part.data[501]
 	lines.append("[part] %s rarity=%s cd=%ss ammo=%s effect=%s power=%s" % [part.name, part.rarity, part.cooldown, part.ammo, part.effect, part.power])
 	var map = Settings.map.data[3]
-	lines.append("[map] %s weather=%s desc=%s" % [map.name, map.weather, map.desc])
+	lines.append("[map] %s weather=%s(%s) desc=%s" % [map.name, map.weather, WeatherEnv.cfg(WeatherEnv.id(String(map.weather))).label, map.desc])
 	var game_v = {}
 	for id in Settings.game.data:
 		game_v[Settings.game.data[id].key] = Settings.game.data[id].value

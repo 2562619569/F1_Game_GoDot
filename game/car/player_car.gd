@@ -1,15 +1,14 @@
+class_name PlayerCar
 extends Node3D
 ## 玩家赛车根节点：键盘输入（复用 GEVP 输入映射）+ 战术技能。
 ## 战术件配表驱动：effect = nitro_push / stealth / slow_spin，
 ## 弹药与冷却按 Part 表 cooldown / ammo / duration 每回合重置。
 
-signal tactical_feedback(text: String)
-
 const KEY_LABELS := ["Q", "E"]
 
 var vehicle: Vehicle
 var frozen := true
-var race: Node3D  # RaceManager
+var race: RaceManager = null  # 注入用于火箭锁定；调试场景可为 null
 
 var tactical: Array = []  # [{pid, cfg, ammo, cd_left}]
 var stealth_left := 0.0
@@ -18,11 +17,10 @@ var nitro_power := 0.0
 var _was_stealth := false
 var _auto_follower: TrackFollower = null  # 冒烟测试自动驾驶
 
-func setup(v: Vehicle, race_ref: Node3D) -> void:
+func setup(v: Vehicle, track_data: TrackData, race: RaceManager = null) -> void:
 	vehicle = v
-	race = race_ref
-	# get() 安全访问:调试场景的 race_ref 没有 track_data 属性
-	_auto_follower = TrackFollower.new(race_ref.get("track_data") if race_ref != null else null, 0.0)
+	self.race = race
+	_auto_follower = TrackFollower.new(track_data, 0.0)
 	tactical.clear()
 	for cat in Match.FUNC_CATEGORIES:
 		if Match.equipped.has(cat):
@@ -74,14 +72,11 @@ func _physics_process(delta: float) -> void:
 
 func fire(slot: int) -> void:
 	if slot >= tactical.size():
-		tactical_feedback.emit("No tactical part equipped")
 		return
 	var s: Dictionary = tactical[slot]
 	if s.ammo <= 0:
-		tactical_feedback.emit("%s: NO AMMO" % s.cfg.name)
 		return
 	if s.cd_left > 0.0:
-		tactical_feedback.emit("%s: %.0fs cooldown" % [s.cfg.name, s.cd_left])
 		return
 	s.ammo -= 1
 	s.cd_left = float(s.cfg.cooldown)
@@ -89,20 +84,17 @@ func fire(slot: int) -> void:
 		"nitro_push":
 			nitro_left = float(s.cfg.duration)
 			nitro_power = float(s.cfg.power)
-			tactical_feedback.emit("NITRO!")
 		"stealth":
 			stealth_left = float(s.cfg.duration)
-			tactical_feedback.emit("STEALTH %ds" % int(s.cfg.duration))
 		"slow_spin":
-			var target = race.find_target_ahead(vehicle, Match.game_cfg("lock_ahead_range"))
-			if target == null:
-				tactical_feedback.emit("ROCKET: no lock ahead")
-			else:
+			if race == null:
+				return  # 调试场景无 RaceManager，不可锁定
+			var target := race.find_target_ahead(vehicle, Match.game_cfg("lock_ahead_range"))
+			if target != null:
 				target.vehicle.linear_velocity *= 0.45
 				target.vehicle.angular_velocity += Vector3(0, float(s.cfg.power) * 0.12, 0)
-				tactical_feedback.emit("ROCKET HIT %s!" % target.name)
 		_:
-			tactical_feedback.emit("%s: no effect" % s.cfg.name)
+			pass
 
 func is_stealth() -> bool:
 	return stealth_left > 0.0

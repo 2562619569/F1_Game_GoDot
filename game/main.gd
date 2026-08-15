@@ -30,7 +30,7 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.is_action_pressed("DebugFinish"):
 		if race != null and not race.ended:
-			race.debug_finish_all()
+			RaceDebug.finish_all(race)
 
 # ---------------- 界面切换 ----------------
 

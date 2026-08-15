@@ -32,6 +32,7 @@ func until(pred: Callable, timeout := 15.0) -> bool:
 
 func _run() -> void:
 	print("========== ModRacer SMOKE TEST START ==========")
+	Engine.time_scale = 3.0               # 3 倍速推进（物理仍 60Hz，断言按游戏时间）
 	Match.auto_test = true                 # 玩家车自动驾驶
 	Match.intermission_sec_override = 999.0  # 局间不自动跳转，由测试驱动
 
@@ -80,12 +81,12 @@ func _run() -> void:
 
 	# ---- 6. 掉落拾取 ----
 	var backpack_before := Match.backpack.size()
-	main.race.debug_spawn_loot_ahead()
+	RaceDebug.spawn_loot_ahead(main.race)
 	await until(func(): return Match.backpack.size() > backpack_before, 25.0)
 	ok(Match.backpack.size() > backpack_before, "loot picked up into backpack (now %d parts)" % Match.backpack.size())
 
 	# ---- 7. 完赛 → 局间整备 ----
-	main.race.debug_finish_all()
+	RaceDebug.finish_all(main.race)
 	await until(func(): return main.current_ui != null and main.current_ui.name == "Intermission", 10.0)
 	ok(main.current_ui.name == "Intermission", "round ended -> intermission garage")
 	ok(main.hud == null, "race HUD hidden during intermission")
@@ -123,7 +124,7 @@ func _run() -> void:
 	while guard < 12:
 		guard += 1
 		if main.race != null and not main.race.ended:
-			main.race.debug_finish_all()
+			RaceDebug.finish_all(main.race)
 		await until(func(): return main.current_ui != null and (main.current_ui.name == "Intermission" or main.current_ui.name == "FinalResult"), 10.0)
 		if main.current_ui.name == "FinalResult":
 			break

@@ -1,6 +1,6 @@
 extends Node3D
 ## AI 对手：样条路径跟随（前瞻 + 曲率限速，见 TrackFollower），
-## 强度由 race_manager 通过 CarBuilder torque_scale 调制。
+## 强度由 race_builder 通过 CarBuilder torque_scale 调制。
 
 var vehicle: Vehicle
 var frozen := true

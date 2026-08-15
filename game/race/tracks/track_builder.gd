@@ -273,7 +273,7 @@ func _build_finish_gate() -> void:
 
 ## ---------------- 契约接口(同 track_test) ----------------
 
-func setup(weather: String) -> void:
+func setup(weather: WeatherEnv.Type) -> void:
 	var c := WeatherEnv.cfg(weather)
 	_road_mat.albedo_color = c.road_c
 	_dirt_mat.albedo_color = c.dirt_c

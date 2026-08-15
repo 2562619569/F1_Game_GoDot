@@ -72,7 +72,7 @@ func show_car(car_id: int) -> void:
 		child.queue_free()
 	var v: Vehicle = CAR_SCENE.instantiate()
 	v.position = Vector3(0, 0.5, 0)
-	CarBuilder.apply(v, Settings.car.data[car_id], Match.get_stats(), "sunny", 1.0)
+	CarBuilder.apply(v, Settings.car.data[car_id], Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
 	CarMeshBuilder.attach_visual(v, car_id)
 	turntable.add_child(v)
 	v.freeze = true

@@ -25,17 +25,15 @@ func bind(m: RaceManager) -> void:
 func _ready() -> void:
 	if manager == null:
 		return
-	var map := Match.map_cfg(manager.map_id)
+	var info := manager.race_info()
 	round_label.text = "ROUND %d/%d  ·  %s  ·  %s" % [
-		manager.round_idx, Match.round_count(), map.name, WeatherEnv.cfg(String(map.weather)).label]
+		info.round_idx, info.round_count, info.map_name, info.weather_label]
 
 func _process(delta: float) -> void:
 	if manager == null or manager.ended:
 		return
-	var v: Vehicle = manager.player_racer.vehicle
-	speed_label.text = "%d km/h   G%d" % [roundi(v.speed * 3.6), maxi(0, v.current_gear)]
-	var limit := float(Match.round_cfg().time_limit)
-	timer_label.text = "%d / %ds" % [roundi(manager.race_time), roundi(limit)]
+	speed_label.text = "%d km/h   G%d" % [manager.player_speed_kmh(), manager.player_gear()]
+	timer_label.text = "%d / %ds" % [roundi(manager.race_time), roundi(manager.time_limit_s())]
 
 	if _countdown_left > 0.0:
 		_countdown_left -= delta
@@ -49,7 +47,7 @@ func _process(delta: float) -> void:
 	_refresh_tactical()
 
 func _refresh_tactical() -> void:
-	var ui_data: Array = manager.player_racer.ctrl.tactical_ui()
+	var ui_data: Array = manager.player_tactical_ui()
 	if tactical_box.get_child_count() != ui_data.size():
 		for c in tactical_box.get_children():
 			c.queue_free()

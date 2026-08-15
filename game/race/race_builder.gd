@@ -1,0 +1,167 @@
+class_name RaceBuilder
+extends RefCounted
+## 回合世界的装配（从 RaceManager 拆出）：
+## 赛道 + 天气环境 + 掉落 + 参赛车（含发车位计算）+ 跟随相机。
+## 只负责搭建节点与连接信号回调，不持有回合运行状态。
+
+const TRACK_SCENE := preload("res://game/race/tracks/track_test.tscn")
+const LOOT_SCENE := preload("res://game/race/loot_pickup.tscn")
+const CAR_SCENE := preload("res://addons/gevp/scenes/arcade_car.tscn")
+const CAMERA_SCRIPT := preload("res://addons/gevp/scripts/camera.gd")
+const ENGINE_SOUND := preload("res://addons/gevp/scenes/engine_sound.tscn")
+const PLAYER_SCRIPT := preload("res://game/car/player_car.gd")
+const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
+
+const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
+const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
+
+## 装配整场回合世界。finish_cb / loot_cb 为冲线与拾取信号回调（由 RaceManager 注入）。
+## 返回 {track, track_data, racers, player_racer, player_torque}。
+static func build(race: RaceManager, map_id: int, weather: WeatherEnv.Type, finish_cb: Callable, loot_cb: Callable) -> Dictionary:
+	# --- 赛道 + 天气环境 ---
+	var t := _load_track(race, map_id)
+	var track: Node3D = t.track
+	var track_data: TrackData = t.data
+	track.setup(weather)
+	track.get_node("FinishGate").body_entered.connect(finish_cb)
+	var we := WorldEnvironment.new()
+	we.environment = WeatherEnv.make_env(weather)
+	race.add_child(we)
+	var sun := DirectionalLight3D.new()
+	WeatherEnv.setup_light(sun, weather)
+	race.add_child(sun)
+
+	# --- 掉落 ---
+	_spawn_loot(race, track, loot_cb)
+
+	# --- 参赛车（含倒序发车位） ---
+	var racers: Array[Racer] = []
+	var player_racer := _spawn_racers(race, track, track_data, racers)
+
+	# --- 相机跟随玩家 ---
+	var cam := Camera3D.new()
+	cam.set_script(CAMERA_SCRIPT)
+	cam.follow_distance = 6.5
+	cam.follow_height = 2.6
+	cam.speed = 30.0
+	race.add_child(cam)
+	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
+	cam.follow_this = player_racer.vehicle
+
+	return {"track": track, "track_data": track_data, "racers": racers,
+		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque}
+
+## 赛道加载:map_id 有编辑器 JSON 则程序化生成,否则回退测试直线图
+static func _load_track(race: RaceManager, map_id: int) -> Dictionary:
+	var data: TrackData = null
+	var path := "res://game/race/tracks/data/map_%d.json" % map_id
+	if FileAccess.file_exists(path):
+		data = TrackData.load_json(path)
+	if data != null:
+		var builder := TrackBuilder.new()
+		race.add_child(builder)
+		builder.build(data)
+		return {"track": builder, "data": data}
+	var track := TRACK_SCENE.instantiate()
+	race.add_child(track)
+	return {"track": track, "data": null}
+
+static func _spawn_loot(race: RaceManager, track: Node3D, loot_cb: Callable) -> void:
+	for route in ["main", "hazard"]:
+		var pids: Array = Match.roll_route_drops(route)
+		var pts: Array = track.main_route_points(pids.size()) if route == "main" else track.hazard_route_points()
+		for i in pids.size():
+			var loot := LOOT_SCENE.instantiate()
+			loot.position = pts[i % pts.size()]
+			race.add_child(loot)
+			loot.setup(pids[i], route)
+			loot.collected.connect(loot_cb)
+
+static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackData, racers: Array[Racer]) -> Racer:
+	var grid := {}
+	if Match.next_grid.is_empty():
+		# 首回合默认：玩家杆位，AI 依次靠后
+		grid[Match.PLAYER_NAME] = 1
+		for i in Match.AI_DEFS.size():
+			grid[Match.AI_DEFS[i].name] = i + 2
+	else:
+		grid = Match.next_grid.duplicate()
+		var used := {}
+		for g in grid.values():
+			used[g] = true
+		var free_no := 1
+		for name_ in [Match.PLAYER_NAME] + Match.AI_DEFS.map(func(d): return d.name):
+			if not grid.has(name_):
+				while used.has(free_no):
+					free_no += 1
+				grid[name_] = free_no
+				used[free_no] = true
+
+	# 玩家
+	var player := _make_racer(race, track_data, Match.PLAYER_NAME, Match.car_id, Match.get_stats(), grid[Match.PLAYER_NAME], 1.0, true)
+	racers.append(player)
+
+	# AI（随机装配 1~2 件改件制造差异）
+	for i in Match.AI_DEFS.size():
+		var d: Dictionary = Match.AI_DEFS[i]
+		var eq := {}
+		var cats := ["engine", "tires", "aero", "chassis"]
+		cats.shuffle()
+		for cat in cats.slice(0, randi_range(1, 2)):
+			eq[cat] = Match.roll_part(cat, 2)
+		if randf() < 0.5:
+			eq["tactical"] = Match.roll_part("tactical", 2)
+		var skill: float = d.skill + randf_range(-0.02, 0.02)
+		racers.append(_make_racer(race, track_data, d.name, d.car_id, Match.stats_for_car(d.car_id, eq), grid[d.name], skill, false, i))
+	return player
+
+static func _make_racer(race: RaceManager, track_data: TrackData, rname: String, cid: int, stats: Dictionary, grid_no: int, torque_scale: float, is_player: bool, ai_idx := 0) -> Racer:
+	var root := Node3D.new()
+	root.name = rname
+	var v: Vehicle = CAR_SCENE.instantiate()
+	root.position = _grid_position(track_data, grid_no)
+	if track_data != null:
+		root.rotation.y = track_data.grid_heading(grid_no)  # 车头朝起点切线
+	v.position = Vector3(0, 0.95, 0)
+	CarBuilder.apply(v, Match.car_cfg(cid), stats, race.weather, torque_scale)
+	CarMeshBuilder.attach_visual(v, cid)  # 美术装配，缺资源自动回退占位视觉
+	root.add_child(v)
+	race.add_child(root)
+	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])
+
+	# 注意：脚本必须在入树前附加，否则 _physics_process 不会被启用
+	var ctrl := Node3D.new()
+	ctrl.name = "Driver"
+	if is_player:
+		ctrl.set_script(PLAYER_SCRIPT)
+	else:
+		ctrl.set_script(AI_SCRIPT)
+	root.add_child(ctrl)
+	if is_player:
+		v.add_to_group("player_car")
+		ctrl.setup(v, track_data, race)
+		var snd := ENGINE_SOUND.instantiate()
+		snd.max_db = -16.0
+		snd.vehicle = v  # engine_sound.gd 导出类型是 Vehicle 节点
+		v.add_child(snd)
+	else:
+		ctrl.setup(v, track_data, _grid_lane(track_data, grid_no))
+	var r := Racer.new()
+	r.name = rname
+	r.is_player = is_player
+	r.vehicle = v
+	r.ctrl = ctrl
+	return r
+
+static func _grid_position(track_data: TrackData, grid_no: int) -> Vector3:
+	if track_data != null:
+		return track_data.grid_position(grid_no)
+	var z := -6.0 + float(grid_no - 1) * 8.0
+	var x := -3.5 if grid_no % 2 == 1 else 3.5
+	return Vector3(x, 0, z)
+
+## AI 车道:有赛道数据 = 中心线横向偏移;旧图 = 世界 x
+static func _grid_lane(track_data: TrackData, grid_no: int) -> float:
+	if track_data != null:
+		return track_data.grid_lane(grid_no)
+	return -3.5 if grid_no % 2 == 1 else 3.5
