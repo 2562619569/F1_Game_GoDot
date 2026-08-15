@@ -10,6 +10,21 @@ extends RefCounted
 const _PaintShader := preload("res://game/car/shaders/car_paint.gdshader")
 const _GlassShader := preload("res://game/car/shaders/glass.gdshader")
 
+## 金属闪烁噪声（voronoi，全车共享；异步生成，就绪前 hint_default_white 兜底）
+static var _flake_tex: NoiseTexture2D
+
+static func _get_flake_texture() -> NoiseTexture2D:
+	if _flake_tex == null:
+		var noise := FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+		noise.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+		noise.frequency = 0.35   # 单元细密：贴图内已有多个 voronoi 单元
+		_flake_tex = NoiseTexture2D.new()
+		_flake_tex.width = 256
+		_flake_tex.height = 256
+		_flake_tex.noise = noise
+	return _flake_tex
+
 ## 各预设的参数默认值（编辑器生成 entry 时同构，保证两端一致）
 const DEFAULT_PARAMS := {
 	"paint": {"color": "#c23a2f", "flake_amount": 0.5, "clearcoat": 1.0},
@@ -44,6 +59,7 @@ static func _build(key: String, entry: Dictionary) -> ShaderMaterial:
 			sm.shader = _PaintShader
 			sm.set_shader_parameter("facing_color", Vector3(base.r, base.g, base.b))
 			sm.set_shader_parameter("glancing_color", Vector3(glancing.r, glancing.g, glancing.b))
+			sm.set_shader_parameter("flake_texture", _get_flake_texture())
 			sm.set_shader_parameter("flake_amount", clampf(float(params.get("flake_amount", 0.5)), 0.0, 1.0))
 			sm.set_shader_parameter("clearcoat_amount", clampf(float(params.get("clearcoat", 1.0)), 0.0, 1.0))
 			return sm
