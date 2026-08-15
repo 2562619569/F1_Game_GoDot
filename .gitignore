@@ -1,3 +1,6 @@
 # Godot 4+ specific ignores
 .godot/
 .vscode/
+# 配表工具产物
+log.txt
+settings/verify/verify_result.txt

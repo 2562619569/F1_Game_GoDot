@@ -7,6 +7,10 @@ run/main_scene="res://addons/gevp/scenes/demo_arcade.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
 config/icon="res://addons/gevp/icon.png"
 
+[autoload]
+
+Settings="*res://settings/dist/settings.gd"
+
 [input]
 
 Brakes={
