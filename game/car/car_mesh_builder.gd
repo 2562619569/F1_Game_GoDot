@@ -11,6 +11,8 @@ extends RefCounted
 const DEFAULT_WHEEL := "sport_v1"
 
 const _BodyAttitude := preload("res://game/car/body_attitude.gd")
+const _BrakeLight := preload("res://game/car/brake_light.gd")
+const _MaterialPresets := preload("res://game/car/material_presets.gd")
 
 ## body.json 轮位键 → [物理轮 RayCast3D, 视觉挂点 Node3D, 内嵌占位轮 mesh]
 const SLOTS := {
@@ -73,6 +75,19 @@ static func attach(v: Vehicle, body_id: String, wheel_id: String) -> bool:
 	var body_visual: Node3D = load(body_path).instantiate()
 	body_visual.name = "BodyVisual"
 	body_pivot.add_child(body_visual)
+
+	# 刹车灯：body.json 的 materials.brake_light 按材质名点亮（未标记则自动跳过；
+	# headlight / body 标记暂只存元数据，后续做车灯/车漆逻辑时消费）
+	var mats_meta: Dictionary = body_meta.get("materials") if body_meta.get("materials") is Dictionary else {}
+	var brake_light := _BrakeLight.new()
+	brake_light.name = "BrakeLight"
+	body_visual.add_child(brake_light)
+	brake_light.setup(v, body_visual, mats_meta)
+
+	# 预设材质球（车漆/大灯罩/车玻璃）：按 material_presets 把同名材质替换为社区效果 ShaderMaterial
+	var presets_meta: Dictionary = body_meta.get("material_presets") \
+			if body_meta.get("material_presets") is Dictionary else {}
+	_MaterialPresets.apply(body_visual, presets_meta)
 
 	var half_axle_x := body_width - wheel_width * 0.5
 	for slot in SLOTS:

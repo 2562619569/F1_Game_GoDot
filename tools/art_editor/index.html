@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>ModRacer 美术资源编辑器 — 轮毂中心点 / 车壳轮位</title>
+<title>ModRacer 美术资源编辑器 — 轮毂中心点 / 车壳前后轴</title>
 <style>
   :root {
     --bg: #1b1d22; --panel: #24262d; --panel2: #2b2e36; --line: #3a3d47;
@@ -28,6 +28,7 @@
   button:hover { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   #status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #status.ok { color: var(--ok); } #status.err { color: #ff7a7a; }
 
@@ -53,12 +54,36 @@
   .field label { width: 64px; flex: none; color: var(--dim); }
   .field input[type="number"] { width: 100%; }
   .row3 { display: grid; grid-template-columns: 56px 1fr 1fr 1fr; gap: 4px; align-items: center; margin-bottom: 6px; }
-  .row3 span:first-child { color: var(--dim); }
-  .row3 input { width: 100%; }
+  .row2 { display: grid; grid-template-columns: 56px 1fr 1fr; gap: 4px; align-items: center; margin-bottom: 6px; }
+  .row3 span:first-child, .row2 span:first-child { color: var(--dim); }
+  .row3 input, .row2 input { width: 100%; }
   .chk { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--fg); cursor: pointer; }
   .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
   .divider { height: 1px; background: var(--line); margin: 12px 0; }
   input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  .mat-tree { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; padding: 4px 0; }
+  .tree-node { color: var(--dim); font-size: 12px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mat-chip {
+    display: flex; align-items: center; gap: 6px; padding: 2px 6px; cursor: pointer;
+    font-size: 12px; color: var(--fg); border-radius: 3px; white-space: nowrap;
+  }
+  .mat-chip:hover { background: var(--panel2); }
+  .mat-chip.sel { background: var(--panel2); outline: 1px solid var(--accent); }
+  .mat-chip .sw { flex: none; width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(255,255,255,.25); }
+  .mat-chip .mat-name { overflow: hidden; text-overflow: ellipsis; }
+  .slot-badge { flex: none; font-size: 10px; color: #10131a; font-weight: 600; padding: 0 4px; border-radius: 3px; }
+  .mat-slot { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .mat-slot .slot-sw { flex: none; width: 12px; height: 12px; border-radius: 3px; }
+  .mat-slot select { flex: 1; min-width: 0; }
+  .field-label { color: var(--dim); font-size: 11px; font-weight: 600; margin: 4px 0 6px; letter-spacing: .4px; }
+  .preset-wrap { margin-bottom: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; }
+  .preset-wrap .mat-slot { margin-bottom: 4px; }
+  .preset-param { display: flex; align-items: center; gap: 6px; margin: 3px 0 3px 18px; }
+  .preset-param label { flex: none; width: 52px; color: var(--dim); font-size: 12px; }
+  .preset-param input[type="range"] { flex: 1; min-width: 0; }
+  .preset-param input[type="color"] { flex: 1; height: 22px; padding: 1px 2px; }
+  .preset-param .param-val { flex: none; width: 32px; text-align: right; font-size: 11px; color: var(--dim); }
 
   #legend {
     position: absolute; left: 10px; top: 10px; pointer-events: none;
@@ -71,6 +96,7 @@
   .marker-label {
     color: #fff; font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
     background: rgba(0,0,0,.45); white-space: nowrap; pointer-events: none;
+    position: relative; z-index: 10;
   }
 </style>
 </head>
@@ -80,6 +106,8 @@
   <button id="btnOpen">打开 art 目录</button>
   <button id="btnSave" class="primary" disabled>保存 JSON</button>
   <button id="btnFit">适配视图</button>
+  <button id="btnToolAxle" disabled>编辑前后轴</button>
+  <button id="btnToolWidth" disabled>编辑车宽</button>
   <span id="status">请先打开项目根下的 art/ 目录（Chrome / Edge）</span>
 </header>
 
@@ -106,8 +134,16 @@
   <div id="viewportWrap">
     <div id="legend">
       <b>前 = −Z</b>（车头方向）　米 / Y-up<br>
-      <span class="c" style="background:#37c8ff"></span>前左 FL　<span class="c" style="background:#ff5fd0"></span>前右 FR<br>
-      <span class="c" style="background:#ffd23e"></span>后左 RL　<span class="c" style="background:#ff8a3c"></span>后右 RR
+      <span class="c" style="background:#37c8ff"></span>前轴（x 恒 0）<br>
+      <span class="c" style="background:#ffd23e"></span>后轴（x 恒 0）<br>
+      <span class="c" style="background:#b48cff"></span>车宽（±body_width）<br>
+      <span class="c" style="background:#ffd23e"></span>大灯材质<br>
+      <span class="c" style="background:#ff5252"></span>刹车灯材质<br>
+      <span class="c" style="background:#4f8cff"></span>车身材质<br>
+      <span class="c" style="background:#e0524a"></span>预设·车漆<br>
+      <span class="c" style="background:#8fd8ff"></span>预设·大灯罩<br>
+      <span class="c" style="background:#39404d"></span>预设·车玻璃<br>
+      <span style="color:#8b90a0">四轮按轮毂 width 与 body_width 齐边推导</span>
     </div>
   </div>
 
