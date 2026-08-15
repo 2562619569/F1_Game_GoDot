@@ -1214,6 +1214,7 @@ function addTreeNode(container, o, depth) {
           chip.appendChild(b2);
         }
         chip.addEventListener('click', function (ev) { ev.stopPropagation(); selectMaterialEntry(e.id); });
+        if (S.mode === 'body') chip.appendChild(buildChipTypeSelect(e));
       }
       container.appendChild(chip);
     });
@@ -1264,7 +1265,7 @@ function renderMatSection(panel) {
 
     var hint = document.createElement('div');
     hint.className = 'hint';
-    hint.textContent = '点击材质条目可在视口高亮；刹车时「刹车灯」点亮。预设材质在游戏内替换为社区效果材质（车漆/玻璃），颜色与透明度实时预览并写入 JSON。';
+    hint.textContent = '材质条目右侧「类型…」下拉可直接把该材质指定为 大灯/刹车灯/车身 或 车漆/大灯罩/车玻璃；点击条目可在视口高亮；预设参数实时预览并写入 JSON。';
     sec.appendChild(hint);
   }
   panel.appendChild(sec);
@@ -1329,7 +1330,8 @@ function presetSlotRow(s) {
   return wrap;
 }
 
-// 材质下拉（三个行为槽 / 三个预设槽共用）：列出当前模型材质 + 缺失值保留明示
+// 材质下拉（三个行为槽 / 三个预设槽共用）：列出当前模型材质 + 缺失值保留明示；
+// 尾部「手动输入…」可键入任意材质名（按命名约定预填 / 模型未就绪时先绑定）
 function buildMaterialSelect(slotKey, current, onChange) {
   var sel = document.createElement('select');
   var optNone = document.createElement('option');
@@ -1350,9 +1352,98 @@ function buildMaterialSelect(slotKey, current, onChange) {
     o2.value = current; o2.textContent = current + '（模型中缺失）';
     sel.appendChild(o2);
   }
+  var optManual = document.createElement('option');
+  optManual.value = '__manual__'; optManual.textContent = '✏ 手动输入…';
+  sel.appendChild(optManual);
   sel.value = current;
-  sel.addEventListener('change', function () { onChange(sel.value || null); });
+  sel.addEventListener('change', function () {
+    if (sel.value !== '__manual__') { onChange(sel.value || null); return; }
+    swapToManualInput(sel, current, onChange);
+  });
   return sel;
+}
+
+// 把下拉替换为行内手输框：回车/✓ 应用，Esc/× 取消（不自动 blur 应用，防误触）
+function swapToManualInput(sel, current, onChange) {
+  var wrap = document.createElement('div');
+  wrap.className = 'manual-mat';
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.placeholder = '材质名（与 GLB 内名称一致）';
+  inp.value = current || '';
+  var ok = document.createElement('button');
+  ok.textContent = '✓'; ok.title = '应用';
+  var no = document.createElement('button');
+  no.textContent = '×'; no.title = '取消';
+  wrap.appendChild(inp); wrap.appendChild(ok); wrap.appendChild(no);
+  sel.replaceWith(wrap);
+  inp.focus();
+  inp.select();
+  function apply() { onChange(inp.value.trim() || null); }   // 空值 = 清除绑定
+  ok.addEventListener('click', apply);
+  no.addEventListener('click', function () { renderPanel(); });
+  inp.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); apply(); }
+    if (e.key === 'Escape') { e.preventDefault(); renderPanel(); }
+  });
+}
+
+// 材质条目上的类型下拉：直接把该材质指定为 行为槽（大灯/刹车灯/车身）或预设（车漆/大灯罩/车玻璃）
+function buildChipTypeSelect(entry) {
+  var sel = document.createElement('select');
+  sel.className = 'chip-type';
+  var optNone = document.createElement('option');
+  optNone.value = ''; optNone.textContent = '类型…';
+  sel.appendChild(optNone);
+  var g1 = document.createElement('optgroup'); g1.label = '行为';
+  MAT_SLOTS.forEach(function (s) {
+    var o = document.createElement('option');
+    o.value = 'b:' + s.key; o.textContent = s.label;
+    g1.appendChild(o);
+  });
+  sel.appendChild(g1);
+  var g2 = document.createElement('optgroup'); g2.label = '预设效果';
+  PRESET_SLOTS.forEach(function (s) {
+    var o = document.createElement('option');
+    o.value = 'p:' + s.key; o.textContent = s.label;
+    g2.appendChild(o);
+  });
+  sel.appendChild(g2);
+  sel.value = materialTypeValue(entry);
+  sel.addEventListener('click', function (ev) { ev.stopPropagation(); });
+  sel.addEventListener('change', function (ev) {
+    ev.stopPropagation();
+    assignMaterialType(entry, sel.value);
+  });
+  return sel;
+}
+
+// 该材质当前的类型值：'' | 'b:<行为槽>' | 'p:<预设槽>'
+function materialTypeValue(entry) {
+  var b = slotOfMaterial(entry);
+  if (b) return 'b:' + b;
+  var p = presetOfMaterial(entry);
+  if (p) return 'p:' + p.key;
+  return '';
+}
+
+// 从材质侧统一指派：先清该材质的一切绑定，再落到目标槽（槽位单持有，旧材质被顶掉）
+function assignMaterialType(entry, val) {
+  if (S.mode !== 'body' || !S.json) return;
+  var m = S.json.materials, ps = S.json.material_presets;
+  MAT_SLOTS.forEach(function (s) { if (m[s.key] === entry.name) m[s.key] = null; });
+  PRESET_SLOTS.forEach(function (s) { if (ps[s.key] && ps[s.key].material === entry.name) ps[s.key] = null; });
+  if (val) {
+    var key = val.slice(2);
+    if (val.charAt(0) === 'b') {
+      m[key] = entry.name;
+    } else {
+      ps[key] = { material: entry.name, params: JSON.parse(JSON.stringify(PRESET_DEFAULT_PARAMS[key])) };
+    }
+  }
+  applyMatVisuals();
+  renderPanel();
+  scheduleSave();
 }
 
 function renderPanel(rebuildAll) {
