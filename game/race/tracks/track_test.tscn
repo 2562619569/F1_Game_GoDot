@@ -1,0 +1,230 @@
+[gd_scene load_steps=20 format=3 uid="uid://mtracktest01"]
+
+[ext_resource type="Script" path="res://game/race/tracks/track_test.gd" id="1_track"]
+
+[sub_resource type="BoxShape3D" id="Box_grass"]
+size = Vector3(140, 2, 680)
+
+[sub_resource type="BoxShape3D" id="Box_road"]
+size = Vector3(24, 1, 560)
+
+[sub_resource type="BoxShape3D" id="Box_branch"]
+size = Vector3(10, 1, 56)
+
+[sub_resource type="BoxShape3D" id="Box_branchmid"]
+size = Vector3(10, 1, 160)
+
+[sub_resource type="BoxShape3D" id="Box_ramp"]
+size = Vector3(10, 0.4, 26)
+
+[sub_resource type="BoxShape3D" id="Box_wall_long"]
+size = Vector3(1, 2, 560)
+
+[sub_resource type="BoxShape3D" id="Box_wall_a"]
+size = Vector3(1, 2, 115)
+
+[sub_resource type="BoxShape3D" id="Box_wall_b"]
+size = Vector3(1, 2, 150)
+
+[sub_resource type="BoxShape3D" id="Box_wall_c"]
+size = Vector3(1, 2, 175)
+
+[sub_resource type="BoxShape3D" id="Box_wall_branch"]
+size = Vector3(1, 2, 170)
+
+[sub_resource type="BoxShape3D" id="Box_gate"]
+size = Vector3(30, 7, 8)
+
+[sub_resource type="StandardMaterial3D" id="Mat_grass"]
+albedo_color = Color(0.3, 0.55, 0.28, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_road"]
+albedo_color = Color(0.22, 0.23, 0.26, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_dirt"]
+albedo_color = Color(0.52, 0.4, 0.26, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_wall"]
+albedo_color = Color(0.8, 0.8, 0.84, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_post"]
+albedo_color = Color(0.25, 0.9, 0.45, 1)
+emission_enabled = true
+emission = Color(0.25, 0.9, 0.45, 1)
+emission_energy_multiplier = 0.8
+
+[sub_resource type="StandardMaterial3D" id="Mat_banner"]
+albedo_color = Color(0.95, 0.95, 0.95, 1)
+emission_enabled = true
+emission = Color(1, 1, 1, 1)
+emission_energy_multiplier = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_unit"]
+size = Vector3(1, 1, 1)
+
+[node name="TrackTest" type="Node3D"]
+script = ExtResource("1_track")
+
+[node name="BaseGrass" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.6, -240)
+groups = ["Grass"]
+
+[node name="Shape" type="CollisionShape3D" parent="BaseGrass"]
+shape = SubResource("Box_grass")
+
+[node name="Mesh" type="MeshInstance3D" parent="BaseGrass"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+scale = Vector3(140, 2, 680)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_grass")
+
+[node name="Road" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, -250)
+groups = ["Road"]
+
+[node name="Shape" type="CollisionShape3D" parent="Road"]
+shape = SubResource("Box_road")
+
+[node name="Mesh" type="MeshInstance3D" parent="Road"]
+scale = Vector3(24, 1, 560)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_road")
+
+[node name="BranchEntry" type="StaticBody3D" parent="."]
+transform = Transform3D(0.952, 0, -0.305, 0, 1, 0, 0.305, 0, 0.952, 12, -0.5, -115)
+groups = ["Dirt"]
+
+[node name="Shape" type="CollisionShape3D" parent="BranchEntry"]
+shape = SubResource("Box_branch")
+
+[node name="Mesh" type="MeshInstance3D" parent="BranchEntry"]
+scale = Vector3(10, 1, 56)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_dirt")
+
+[node name="BranchMid" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, -0.5, -220)
+groups = ["Dirt"]
+
+[node name="Shape" type="CollisionShape3D" parent="BranchMid"]
+shape = SubResource("Box_branchmid")
+
+[node name="Mesh" type="MeshInstance3D" parent="BranchMid"]
+scale = Vector3(10, 1, 160)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_dirt")
+
+[node name="BranchExit" type="StaticBody3D" parent="."]
+transform = Transform3D(0.952, 0, 0.305, 0, 1, 0, -0.305, 0, 0.952, 12, -0.5, -325)
+groups = ["Dirt"]
+
+[node name="Shape" type="CollisionShape3D" parent="BranchExit"]
+shape = SubResource("Box_branch")
+
+[node name="Mesh" type="MeshInstance3D" parent="BranchExit"]
+scale = Vector3(10, 1, 56)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_dirt")
+
+[node name="Ramp" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.993, -0.12, 0, 0.12, 0.993, 20, 1.45, -232)
+groups = ["Dirt"]
+
+[node name="Shape" type="CollisionShape3D" parent="Ramp"]
+shape = SubResource("Box_ramp")
+
+[node name="Mesh" type="MeshInstance3D" parent="Ramp"]
+scale = Vector3(10, 0.4, 26)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_dirt")
+
+[node name="WallLeft" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.6, -250)
+
+[node name="Shape" type="CollisionShape3D" parent="WallLeft"]
+shape = SubResource("Box_wall_long")
+
+[node name="Mesh" type="MeshInstance3D" parent="WallLeft"]
+scale = Vector3(1, 2, 560)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_wall")
+
+[node name="WallRightA" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.6, -27.5)
+
+[node name="Shape" type="CollisionShape3D" parent="WallRightA"]
+shape = SubResource("Box_wall_a")
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRightA"]
+scale = Vector3(1, 2, 115)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_wall")
+
+[node name="WallRightB" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.6, -220)
+
+[node name="Shape" type="CollisionShape3D" parent="WallRightB"]
+shape = SubResource("Box_wall_b")
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRightB"]
+scale = Vector3(1, 2, 150)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_wall")
+
+[node name="WallRightC" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.6, -442.5)
+
+[node name="Shape" type="CollisionShape3D" parent="WallRightC"]
+shape = SubResource("Box_wall_c")
+
+[node name="Mesh" type="MeshInstance3D" parent="WallRightC"]
+scale = Vector3(1, 2, 175)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_wall")
+
+[node name="WallBranch" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 26, 0.6, -222)
+
+[node name="Shape" type="CollisionShape3D" parent="WallBranch"]
+shape = SubResource("Box_wall_branch")
+
+[node name="Mesh" type="MeshInstance3D" parent="WallBranch"]
+scale = Vector3(1, 2, 170)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_wall")
+
+[node name="StartPostL" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, 0.75, -2)
+scale = Vector3(0.8, 1.5, 0.8)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_post")
+
+[node name="StartPostR" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, 0.75, -2)
+scale = Vector3(0.8, 1.5, 0.8)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_post")
+
+[node name="FinishGate" type="Area3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -500)
+
+[node name="Shape" type="CollisionShape3D" parent="FinishGate"]
+shape = SubResource("Box_gate")
+
+[node name="PostL" type="MeshInstance3D" parent="FinishGate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.5, -1, 0)
+scale = Vector3(0.8, 3, 0.8)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_post")
+
+[node name="PostR" type="MeshInstance3D" parent="FinishGate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.5, -1, 0)
+scale = Vector3(0.8, 3, 0.8)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_post")
+
+[node name="Banner" type="MeshInstance3D" parent="FinishGate"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
+scale = Vector3(24, 1.2, 0.3)
+mesh = SubResource("Mesh_unit")
+material_override = SubResource("Mat_banner")
