@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ModRacer 美术资源编辑器 — 轮毂中心点 / 车壳轮位</title>
+<style>
+  :root {
+    --bg: #1b1d22; --panel: #24262d; --panel2: #2b2e36; --line: #3a3d47;
+    --fg: #d7dae2; --dim: #8b90a0; --accent: #4f8cff; --ok: #3ecf8e; --warn: #ffb454;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.5 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--line); flex: none;
+  }
+  header h1 { font-size: 14px; font-weight: 600; margin-right: 8px; }
+  button, select, input[type="text"], input[type="number"] {
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 4px 10px; font: inherit; outline: none;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #status { margin-left: auto; color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #status.ok { color: var(--ok); } #status.err { color: #ff7a7a; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #left { width: 210px; flex: none; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 10px; }
+  #right { width: 250px; flex: none; background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 10px; }
+  #viewportWrap { flex: 1; position: relative; min-width: 0; }
+  #viewportWrap canvas { display: block; }
+
+  .sec { margin-bottom: 14px; }
+  .sec h3 { font-size: 12px; color: var(--dim); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .sec ul { list-style: none; }
+  .sec li {
+    padding: 5px 8px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between;
+  }
+  .sec li:hover { background: var(--panel2); }
+  .sec li.active { background: var(--accent); color: #fff; }
+  .sec li .tag { color: var(--dim); font-size: 11px; }
+  .sec li.active .tag { color: #d9e7ff; }
+  .empty { color: var(--dim); font-size: 12px; padding: 4px 2px; }
+
+  .field { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .field label { width: 64px; flex: none; color: var(--dim); }
+  .field input[type="number"] { width: 100%; }
+  .row3 { display: grid; grid-template-columns: 56px 1fr 1fr 1fr; gap: 4px; align-items: center; margin-bottom: 6px; }
+  .row3 span:first-child { color: var(--dim); }
+  .row3 input { width: 100%; }
+  .chk { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; color: var(--fg); cursor: pointer; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  .divider { height: 1px; background: var(--line); margin: 12px 0; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  #legend {
+    position: absolute; left: 10px; top: 10px; pointer-events: none;
+    background: rgba(20,22,26,.72); border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 10px; font-size: 12px; line-height: 1.7; color: var(--dim);
+  }
+  #legend b { color: var(--fg); font-weight: 600; }
+  #legend .c { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+  .marker-label {
+    color: #fff; font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
+    background: rgba(0,0,0,.45); white-space: nowrap; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>美术资源编辑器</h1>
+  <button id="btnOpen">打开 art 目录</button>
+  <button id="btnSave" class="primary" disabled>保存 JSON</button>
+  <button id="btnFit">适配视图</button>
+  <span id="status">请先打开项目根下的 art/ 目录（Chrome / Edge）</span>
+</header>
+
+<main>
+  <aside id="left">
+    <div class="sec">
+      <h3>车壳（cars/）</h3>
+      <ul id="listCars"><li class="empty">未打开目录</li></ul>
+    </div>
+    <div class="sec">
+      <h3>轮毂（wheels/）</h3>
+      <ul id="listWheels"><li class="empty">未打开目录</li></ul>
+    </div>
+    <div class="sec" id="previewSec" style="display:none">
+      <h3>轮毂装配预览</h3>
+      <select id="selPreviewWheel" style="width:100%"></select>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" id="chkSteer"> 前轮转向模拟</label>
+      <input type="range" id="rngSteer" min="-36" max="36" step="1" value="0" style="display:none">
+      <label class="chk"><input type="checkbox" id="chkSpin"> 轮毂自转</label>
+      <div class="hint">预览按「轮毂中心点对齐轮位」摆放，与游戏内装配一致。</div>
+    </div>
+  </aside>
+
+  <div id="viewportWrap">
+    <div id="legend">
+      <b>前 = −Z</b>（车头方向）　米 / Y-up<br>
+      <span class="c" style="background:#37c8ff"></span>前左 FL　<span class="c" style="background:#ff5fd0"></span>前右 FR<br>
+      <span class="c" style="background:#ffd23e"></span>后左 RL　<span class="c" style="background:#ff8a3c"></span>后右 RR
+    </div>
+  </div>
+
+  <aside id="right"></aside>
+</main>
+
+<input type="file" id="dirInput" webkitdirectory multiple style="display:none">
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="vendor/CSS2DRenderer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

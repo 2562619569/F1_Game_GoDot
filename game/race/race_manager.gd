@@ -135,6 +135,7 @@ func _make_racer(rname: String, cid: int, stats: Dictionary, grid_no: int, torqu
 	root.position = gpos
 	v.position = Vector3(0, 0.95, 0)
 	CarBuilder.apply(v, Match.car_cfg(cid), stats, weather, torque_scale)
+	CarMeshBuilder.attach_visual(v, cid)  # 美术装配，缺资源自动回退占位视觉
 	root.add_child(v)
 	add_child(root)
 	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])

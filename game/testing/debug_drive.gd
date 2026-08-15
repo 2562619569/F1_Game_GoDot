@@ -11,7 +11,8 @@ func _ready() -> void:
 	root.position = Vector3(0, 0, -6)
 	var v: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
 	v.position = Vector3(0, 0.95, 0)
-	CarBuilder.apply(v, Match.car_cfg(1), Match.get_stats(), "sunny", 1.0)
+	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), "sunny", 1.0)
+	CarMeshBuilder.attach_visual(v, 601)  # 美术装配，缺资源自动回退占位视觉
 	root.add_child(v)
 	add_child(root)
 
