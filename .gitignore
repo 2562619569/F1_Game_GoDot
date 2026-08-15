@@ -4,3 +4,5 @@
 # 配表工具产物
 log.txt
 settings/verify/verify_result.txt
+# 视觉捕获测试产物
+game/testing/shots/
