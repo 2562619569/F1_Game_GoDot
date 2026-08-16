@@ -20,20 +20,29 @@ func _ready() -> void:
 	_check_close()
 
 	await get_tree().create_timer(0.8).timeout
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
+	# headless 模式 frame_post_draw 不触发会永久挂起，用短定时器兜底（截图为空图，仅窗口模式出真实像素）
+	if DisplayServer.get_name() == "headless":
+		await get_tree().create_timer(0.1).timeout
+	else:
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	var dir := ProjectSettings.globalize_path("res://game/testing/shots")
 	DirAccess.make_dir_recursive_absolute(dir)
-	img.save_png(dir.path_join("showroom_check.png"))
-	print("[SHOT] showroom_check -> %s" % dir.path_join("showroom_check.png"))
+	if img == null:
+		print("[SHOT] headless 空渲染器无像素，跳过截图")  # 防止 null 中断协程导致 quit 不执行
+	else:
+		img.save_png(dir.path_join("showroom_check.png"))
+		print("[SHOT] showroom_check -> %s" % dir.path_join("showroom_check.png"))
 	print("[DONE] failures=%d" % failures)
 	get_tree().quit(1 if failures > 0 else 0)
 
 func _check_rotation() -> void:
-	var y0: float = showroom._car.rotation.y   # showroom 为 Variant，需显式类型供下方 is_equal_approx 使用
+	# 角度差一律 wrapf 到 (-PI, PI] 再比较：出生 yaw 225° 落在欧拉角 ±180° 分支
+	# 翻转区，rotation.y 会在等价表示间跳变（3.93 ↔ -2.36），直接比原始值会误报
+	var y0: float = showroom._car.rotation.y   # showroom 为 Variant，需显式类型供下方运算使用
 	await get_tree().create_timer(0.3).timeout
-	_note(is_equal_approx(showroom._car.rotation.y, y0), "无输入时车辆不自动旋转")
+	_note(absf(wrapf(showroom._car.rotation.y - y0, -PI, PI)) < 0.01, "无输入时车辆不自动旋转")
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
@@ -44,12 +53,15 @@ func _check_rotation() -> void:
 	var release := press.duplicate()
 	release.pressed = false
 	showroom._unhandled_input(release)
-	_note(is_equal_approx(showroom._car.rotation.y, y0 - 100.0 * showroom.drag_sensitivity), "拖拽 100px 车辆随之旋转")
+	_note(absf(wrapf(showroom._car.rotation.y - y0 + 100.0 * showroom.drag_sensitivity, -PI, PI)) < 0.01, "拖拽 100px 车辆随之旋转")
 	showroom._unhandled_input(press)  # 重新按下再反向拖拽
 	drag.relative = Vector2(-50, 0)
 	showroom._unhandled_input(drag)
 	showroom._unhandled_input(release)
-	_note(showroom._car.rotation.y > y0 - 100.0 * showroom.drag_sensitivity, "反向拖拽可回转")
+	_note(wrapf(showroom._car.rotation.y - y0, -PI, PI) > -100.0 * showroom.drag_sensitivity, "反向拖拽可回转")
+	_note(not showroom._car.is_physics_processing(), "展车物理已停用（纯视觉道具，旋转不溜车）")
+	_note(showroom._car.linear_velocity.length() < 0.001, "展车静止：速度为零")
+	_note(showroom._car.position.y > 0.3 and showroom._car.position.y < 1.0, "展车摆放在落座高度（台面上方）")
 
 func _check_close() -> void:
 	var state := {"closed": false}
@@ -62,7 +74,8 @@ func _check_close() -> void:
 func _check_initial() -> void:
 	_note(showroom.current_car_id == 601, "初始展示 Car 表最小 id 601")
 	var live := _live_cars()
-	_note(live.size() == 1 and live[0] is Vehicle and not live[0].freeze, "展台上有且仅有一辆未冻结的 Vehicle")
+	_note(live.size() == 1 and live[0] is Vehicle and not live[0].is_physics_processing(), "展台上有且仅有一辆展车（物理已停用）")
+	_note(showroom.get_node_or_null("Backdrop/Wall") != null, "环形背景幕布已生成")
 	var bar: HBoxContainer = showroom.get_node("UI/Root/BottomBar")
 	_note(bar.get_children().size() == Settings.car.data.size(), "底部按钮数 = Car 表车辆数")
 	_note(_pressed_id() == 601, "当前 601 对应按钮为按下态")
