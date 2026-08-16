@@ -12,6 +12,8 @@ ModRacer 配表重构脚本（一次性，2026-08）。
      coefficient_of_drag, frontal_area, front_weight_distribution,
      center_of_gravity_height_offset, inertia_multiplier
 可重复执行（幂等，整簿重建）。
+⚠️ 注意：本脚本数据是历史快照，整簿重建会覆盖 xlsx 后续演进（曾把 Car 601 段重建回 1/2/3 造成线上报错）。
+   xlsx 才是唯一真理源头，日常改动请直接改 xlsx 或写手术式脚本（参考 add_cosmetic_wheel.py）。
 """
 from openpyxl import Workbook
 
@@ -43,15 +45,15 @@ car.append([
     "center_of_gravity_height_offset", "inertia_multiplier",
 ])
 car_rows = [
-    [1, "Brute Power", "RWD", 320, 7.5, 5.5, 1500, 4, 1,
+    [601, "Brute Power", "RWD", 320, 7.5, 5.5, 1500, 4, 1,
      "Straight-line monster with great impact resistance; slippery at low speed, tricky on wet/snow/mud.",
      6, 3, 420.0, 7500.0, 3.4, "3.6|2.2|1.6|1.25|1.0|0.8", 0.0,
      36.0, 3.5, 1.0, 0.32, 2.1, 0.48, -0.15, 1.3],
-    [2, "Agile Sprinter", "FWD", 260, 7.0, 9.0, 1100, 4, 1,
+    [602, "Agile Sprinter", "FWD", 260, 7.0, 9.0, 1100, 4, 1,
      "Rock solid on twisty tracks with high forgiveness; low top speed, weak on straights.",
      8, 5, 260.0, 6800.0, 3.6, "3.8|2.4|1.7|1.3|1.0", 1.0,
      44.0, 5.5, 1.1, 0.34, 1.9, 0.62, -0.25, 1.0],
-    [3, "All-Rounder", "AWD", 290, 8.0, 7.5, 1300, 3, 2,
+    [603, "All-Rounder", "AWD", 290, 8.0, 7.5, 1300, 3, 2,
      "Strong launch grip and all-terrain adaptability; no extreme strengths.",
      7, 8, 330.0, 7000.0, 3.5, "3.7|2.3|1.65|1.28|1.0|0.82", 0.5,
      40.0, 4.5, 1.05, 0.33, 2.0, 0.52, -0.20, 1.15],
