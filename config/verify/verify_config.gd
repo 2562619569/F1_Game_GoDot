@@ -7,8 +7,13 @@ func _ready() -> void:
 	lines.append("[car.physics] torque=%sNM rpm=%s final=%s gears=%s split=%s steer=%sdeg" % [car.max_torque, car.max_rpm, car.final_drive, car.gear_ratios.size(), car.front_torque_split, car.max_steering_angle])
 	var part = Settings.part.data[501]
 	lines.append("[part] %s rarity=%s cd=%ss ammo=%s effect=%s power=%s" % [part.name, part.rarity, part.cooldown, part.ammo, part.effect, part.power])
+	var tire = Settings.part.data[201]
+	lines.append("[part.tires] %s model=%s grip=%s/%s/%s" % [tire.name, tire.model, tire.grip_road, tire.grip_offroad, tire.grip_wet])
+	var cosmetic = Settings.cosmetic.data[701]
+	lines.append("[cosmetic] %s category=%s model=%s rarity=%s" % [cosmetic.name, cosmetic.category, cosmetic.model, cosmetic.rarity])
 	var map = Settings.map.data[3]
-	lines.append("[map] %s weather=%s(%s) desc=%s" % [map.name, map.weather, WeatherEnv.cfg(WeatherEnv.id(String(map.weather))).label, map.desc])
+	var env3 := WeatherEnv.load_map_env(3)
+	lines.append("[map] %s env=%s(%s) desc=%s" % [map.name, env3.preset, env3.label, map.desc])
 	var game_v = {}
 	for id in Settings.game.data:
 		game_v[Settings.game.data[id].key] = Settings.game.data[id].value
@@ -19,9 +24,9 @@ func _ready() -> void:
 	lines.append("[loot] route=%s drops=%s weights=%s guarantee=%s" % [loot.route, loot.drop_count, loot.rarity_weights, loot.guarantee_rarity])
 	var rr = Settings.rank_reward.data[1]
 	lines.append("[rank_reward] 第1名 奖励%d件 稀有度≥%s 下回合%s号发车位" % [rr.reward_count, rr.reward_rarity_min, rr.grid_next])
-	lines.append("VERIFY_OK rows: car=%d part=%d map=%d game=%d round=%d loot=%d rank_reward=%d" % [
+	lines.append("VERIFY_OK rows: car=%d part=%d map=%d game=%d round=%d loot=%d rank_reward=%d cosmetic=%d" % [
 		Settings.car.data.size(), Settings.part.data.size(), Settings.map.data.size(),
-		Settings.game.data.size(), Settings.round.data.size(), Settings.loot.data.size(), Settings.rank_reward.data.size()])
+		Settings.game.data.size(), Settings.round.data.size(), Settings.loot.data.size(), Settings.rank_reward.data.size(), Settings.cosmetic.data.size()])
 	for l in lines:
 		print(l)
 	var f = FileAccess.open("res://config/verify/verify_result.txt", FileAccess.WRITE)

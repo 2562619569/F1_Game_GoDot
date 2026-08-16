@@ -13,7 +13,8 @@ signal round_ended(results: Array, rewards: Array)
 
 var round_idx := 1
 var map_id := 1
-var weather: WeatherEnv.Type = WeatherEnv.Type.SUNNY
+var env_cfg := {}                      # 地图环境完整配置(WeatherEnv.load_map_env 产物)
+var weather: WeatherEnv.Type = WeatherEnv.Type.SUNNY  # 预设枚举(env_cfg.preset 派生,兼容旧引用)
 var racers: Array[Racer] = []
 var player_racer: Racer = null
 var track: Node3D
@@ -30,9 +31,10 @@ func setup(idx: int) -> void:
 	round_idx = idx
 	Match.round_index = idx
 	map_id = Match.upcoming_map_id
-	weather = WeatherEnv.id(String(Match.map_cfg(map_id).weather))  # 配表字符串仅在入口解析一次
+	env_cfg = WeatherEnv.load_map_env(map_id)  # 环境来自地图 env 文件，缺文件回退 SUNNY
+	weather = WeatherEnv.id(String(env_cfg.preset))
 
-	var out := RaceBuilder.build(self, map_id, weather, _on_finish_body, _on_loot_collected)
+	var out := RaceBuilder.build(self, map_id, _on_finish_body, _on_loot_collected)
 	track = out.track
 	track_data = out.track_data
 	racers = out.racers
@@ -162,7 +164,7 @@ func race_info() -> Dictionary:
 	return {
 		"round_idx": round_idx, "round_count": Match.round_count(),
 		"map_name": String(map.name),
-		"weather_label": WeatherEnv.cfg(WeatherEnv.id(String(map.weather))).label,
+		"weather_label": String(env_cfg.get("label", "Sunny")),
 	}
 
 func player_speed_kmh() -> int:

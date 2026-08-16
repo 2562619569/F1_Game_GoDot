@@ -4,7 +4,8 @@ ModRacer 配表重构脚本（一次性，2026-08）。
 
 规范：值与字段名只允许英文；第 2 行为中文注释行，不会被导出器读取。
   1. 全部单元格值英文化
-  2. Map 表精简为 id/name/desc/weather（地图名/介绍/天气）
+  2. Map 表精简为 id/name/desc（地图名/介绍）；天气/环境已迁移到地图 env 文件
+     （game/race/tracks/data/map_<id>_env.json，见 WeatherEnv）
   3. Car 表按 addons/gevp/scripts/vehicle.gd 的导出参数扩充物理基础参数：
      max_torque, max_rpm, final_drive, gear_ratios, front_torque_split,
      max_steering_angle, steering_speed, brake_force_multiplier,
@@ -99,16 +100,16 @@ part_rows = [
 for row in part_rows:
     part.append(row)
 
-# ---------------------------------------------------------------- Map (simplified: name / desc / weather)
+# ---------------------------------------------------------------- Map (simplified: name / desc; env moved to map env json)
 map_ = wb.create_sheet("Map-map")
-map_.append(["int", "tr_string", "tr_string", "string"])
-map_.append(["编号", "地图名", "地图介绍", "天气状态"])
-map_.append(["id", "name", "desc", "weather"])
+map_.append(["int", "tr_string", "tr_string"])
+map_.append(["编号", "地图名", "地图介绍"])
+map_.append(["id", "name", "desc"])
 map_rows = [
-    [1, "Lakeside Highway", "Long straights under open sky, top-speed heaven.", "sunny"],
-    [2, "Desert Gravel Canyon", "Steep jumps and slippery dirt. Offroad tires and tough suspension shine.", "sandstorm"],
-    [3, "Rainy Mountain Pass", "Storm-soaked tight corners. Rain tires and downforce prevail.", "storm"],
-    [4, "Frozen Polar Corridor", "Packed snow and ice; grip is everything.", "snow"],
+    [1, "Lakeside Highway", "Long straights under open sky, top-speed heaven."],
+    [2, "Desert Gravel Canyon", "Steep jumps and slippery dirt. Offroad tires and tough suspension shine."],
+    [3, "Rainy Mountain Pass", "Storm-soaked tight corners. Rain tires and downforce prevail."],
+    [4, "Frozen Polar Corridor", "Packed snow and ice; grip is everything."],
 ]
 for row in map_rows:
     map_.append(row)

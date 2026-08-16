@@ -7,32 +7,51 @@ const SHOTS_DIR := "res://game/testing/shots"
 
 func _ready() -> void:
 	Match.auto_test = true
+	# 环境与展厅同款：明亮极简 + ACES + 辉光 + SSAO + 反射探针
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.15, 0.17, 0.2)
+	env.background_color = Color(0.82, 0.85, 0.88)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.5, 0.5, 0.55)
+	env.ambient_light_color = Color(0.85, 0.87, 0.9)
 	env.ambient_light_energy = 1.0
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.glow_enabled = true
+	env.glow_intensity = 0.2
+	env.ssao_enabled = true
+	env.ssao_intensity = 1.5
+	env.ssao_radius = 0.8
 	world.environment = env
 	add_child(world)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-45, -35, 0)
+	sun.light_color = Color(1.0, 0.98, 0.95)
+	sun.light_energy = 1.2
+	sun.shadow_enabled = true
 	add_child(sun)
+
+	var probe := ReflectionProbe.new()
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.size = Vector3(20, 10, 20)
+	probe.position = Vector3(3, 4, 0)
+	probe.box_projection = true
+	add_child(probe)
 
 	var ground := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(20, 20)
 	ground.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.32, 0.34, 0.38)
+	mat.albedo_color = Color(0.68, 0.70, 0.73)
+	mat.roughness = 0.08
+	mat.metallic = 0.2
 	ground.material_override = mat
 	add_child(ground)
 
 	var v: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
 	v.position = Vector3(0, 0.5, 0)
-	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
+	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), WeatherEnv.cfg(WeatherEnv.Type.SUNNY), 1.0)
 	var assembled := CarMeshBuilder.attach_visual(v, 601)
 	add_child(v)
 	v.freeze = true
@@ -47,7 +66,7 @@ func _ready() -> void:
 	# 刹车灯：冻结车也照常跑 _physics_process，brake_amount 会向 brake_input 爬升
 	var v2: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
 	v2.position = Vector3(6.0, 0.5, 0)
-	CarBuilder.apply(v2, Match.car_cfg(602), Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
+	CarBuilder.apply(v2, Match.car_cfg(602), Match.get_stats(), WeatherEnv.cfg(WeatherEnv.Type.SUNNY), 1.0)
 	var assembled2 := CarMeshBuilder.attach_visual(v2, 602)
 	add_child(v2)
 	v2.freeze = true

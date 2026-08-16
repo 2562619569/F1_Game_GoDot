@@ -1,7 +1,7 @@
 class_name TrackBuilder
 extends Node3D
 ## 编辑器 JSON(TrackData)→ 运行时赛道节点树(SurfaceTool 条带网格 + Trimesh 碰撞)。
-## 产出与 track_test 同契约:setup(weather) / FinishGate(Area3D) /
+## 产出与 track_test 同契约:setup(env) / FinishGate(Area3D) /
 ## main_route_points(n) / hazard_route_points(),可被 RaceManager 无缝使用。
 ## 碰撞体分组 = GEVP 表面键(wheel.gd 取第一个分组名):主路 Road、分支 Dirt、草地 Grass。
 
@@ -273,11 +273,19 @@ func _build_finish_gate() -> void:
 
 ## ---------------- 契约接口(同 track_test) ----------------
 
-func setup(weather: WeatherEnv.Type) -> void:
-	var c := WeatherEnv.cfg(weather)
-	_road_mat.albedo_color = c.road_c
-	_dirt_mat.albedo_color = c.dirt_c
-	_grass_mat.albedo_color = c.grass
+## env = WeatherEnv 合成的完整环境配置：着色随地面色键；wet 时降粗糙度出湿面反光
+func setup(env: Dictionary) -> void:
+	_road_mat.albedo_color = env.road_c
+	_dirt_mat.albedo_color = env.dirt_c
+	_grass_mat.albedo_color = env.grass
+	if bool(env.get("wet", false)):
+		_road_mat.roughness = 0.22
+		_road_mat.metallic = 0.25
+		_dirt_mat.roughness = 0.55
+	else:
+		_road_mat.roughness = 0.9
+		_road_mat.metallic = 0.0
+		_dirt_mat.roughness = 1.0
 
 func main_route_points(count: int) -> Array:
 	return data.main_route_points(count)

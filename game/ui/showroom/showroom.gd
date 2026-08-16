@@ -74,8 +74,8 @@ func show_car(car_id: int) -> void:
 		_car.queue_free()
 	var v: Vehicle = CAR_SCENE.instantiate()
 	v.position = Vector3(0, 1.0, 0)
-	CarBuilder.apply(v, Settings.car.data[car_id], Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
-	CarMeshBuilder.attach_visual(v, car_id)
+	CarBuilder.apply(v, Settings.car.data[car_id], Match.get_stats(), WeatherEnv.cfg(WeatherEnv.Type.SUNNY), 1.0)
+	CarMeshBuilder.attach_visual(v, car_id, Match.appearance())
 	add_child(v)
 	_car = v
 	var cfg: Dictionary = Settings.car.data[car_id]
@@ -91,21 +91,65 @@ func _setup_world() -> void:
 	if world_env.environment == null:
 		var env := Environment.new()
 		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.15, 0.17, 0.2)
+		env.background_color = Color(0.82, 0.85, 0.88)   # 明亮极简：浅灰蓝底
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = Color(0.5, 0.5, 0.55)
+		env.ambient_light_color = Color(0.85, 0.87, 0.9)
 		env.ambient_light_energy = 1.0
+		env.tonemap_mode = Environment.TONE_MAPPER_ACES
+		env.glow_enabled = true                           # 刹车灯/发光件微辉光
+		env.glow_intensity = 0.2
+		env.ssao_enabled = true                           # 车轮/展台接地暗影
+		env.ssao_intensity = 1.5
+		env.ssao_radius = 0.8
+		env.ssr_enabled = true                            # 抛光地板反射车身
+		env.ssr_fade_in = 0.15
+		env.ssr_fade_out = 2.0
+		env.fog_enabled = true                            # 淡雾把地板边缘融进背景
+		env.fog_light_color = Color(0.82, 0.85, 0.88)
+		env.fog_density = 0.035
 		world_env.environment = env
 	if ground.mesh == null:
 		var plane := PlaneMesh.new()
 		plane.size = Vector2(24, 24)
 		ground.mesh = plane
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.32, 0.34, 0.38)
+		mat.albedo_color = Color(0.68, 0.70, 0.73)       # 浅灰抛光地坪
+		mat.roughness = 0.08
+		mat.metallic = 0.2
 		ground.material_override = mat
+	_setup_lights()
+	_setup_reflection_probe()
 	_setup_ground_collision()
 	_setup_platform()
+	camera.fov = 55.0                                    # 收窄视野出产品摄影感
 	camera.look_at(Vector3(0, 0.5, 0))
+
+## 布光：Sun 主光（浅暖白）+ Fill 补光（冷色、无阴影）柔化暗部
+func _setup_lights() -> void:
+	sun.light_color = Color(1.0, 0.98, 0.95)
+	sun.light_energy = 1.2
+	sun.shadow_enabled = true
+	if get_node_or_null("Fill") != null:
+		return
+	var fill := DirectionalLight3D.new()
+	fill.name = "Fill"
+	fill.rotation_degrees = Vector3(-30, 150, 0)
+	fill.light_color = Color(0.85, 0.9, 1.0)
+	fill.light_energy = 0.35
+	fill.shadow_enabled = false
+	add_child(fill)
+
+## 反射探针：金属漆/玻璃/抛光地板获得真实环境反射（静态展厅烘焙一次够用）
+func _setup_reflection_probe() -> void:
+	if get_node_or_null("ReflectionProbe") != null:
+		return
+	var probe := ReflectionProbe.new()
+	probe.name = "ReflectionProbe"
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.size = Vector3(24, 10, 24)
+	probe.position = Vector3(0, 4, 0)
+	probe.box_projection = true
+	add_child(probe)
 
 ## 地面静态碰撞：车万一滑出展台也不会无限坠落
 func _setup_ground_collision() -> void:
@@ -118,7 +162,7 @@ func _setup_ground_collision() -> void:
 	body.add_child(shape)
 	ground.add_child(body)
 
-## 中央展台：带碰撞的矮圆柱，车直接落到台面上
+## 中央展台：带碰撞的矮圆柱（白色低粗糙度），车直接落到台面上；侧缘一圈发光环
 func _setup_platform() -> void:
 	if turntable.get_child_count() > 0:
 		return
@@ -130,13 +174,29 @@ func _setup_platform() -> void:
 	cylinder.height = 0.3
 	mesh.mesh = cylinder
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.24, 0.26, 0.3)
+	mat.albedo_color = Color(0.85, 0.86, 0.88)
+	mat.roughness = 0.1
+	mat.metallic = 0.1
 	mesh.material_override = mat
+	var ring := MeshInstance3D.new()
+	ring.name = "GlowRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = 3.05
+	torus.outer_radius = 3.13
+	ring.mesh = torus
+	var rmat := StandardMaterial3D.new()
+	rmat.albedo_color = Color(1, 1, 1)
+	rmat.emission_enabled = true
+	rmat.emission = Color(1, 1, 1)
+	rmat.emission_energy_multiplier = 1.6
+	ring.material_override = rmat
+	ring.position = Vector3(0, -0.16, 0)  # 贴地环绕展台侧缘
 	var shape := CollisionShape3D.new()
 	shape.shape = CylinderShape3D.new()
 	shape.shape.radius = 3.0
 	shape.shape.height = 0.3
 	body.add_child(mesh)
+	body.add_child(ring)
 	body.add_child(shape)
 	body.position = Vector3(0, 0.15, 0)  # 台面在 y=0.3
 	turntable.add_child(body)

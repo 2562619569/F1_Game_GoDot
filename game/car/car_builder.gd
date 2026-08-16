@@ -3,7 +3,7 @@ extends RefCounted
 ## 「配表 → 车辆物理」的唯一入口：
 ## 1. Car 表的物理基础参数直接写入 GEVP Vehicle 导出变量；
 ## 2. 改件合成属性（Match.get_stats）按映射规则调制物理参数；
-## 3. 天气词缀修正路面摩擦。
+## 3. 地图环境（env 配置）修正路面摩擦。
 ## 换底盘/改数值只需改表；换物理插件只需改本文件。
 
 ## 改件属性 → GEVP 参数的映射系数（正为加成）
@@ -19,7 +19,7 @@ const K_AERO_STAB := 0.15           # aero +1 → 横摆稳定强度
 const K_LANDING_BUMP := 0.03        # landing +1 → 缓冲止点/落地稳定 +3%
 const K_LANDING_UPRIGHT := 0.06     # landing +1 → 空中回正弹簧 +6%
 
-static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, weather: WeatherEnv.Type, torque_scale := 1.0) -> void:
+static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, env: Dictionary, torque_scale := 1.0) -> void:
 	# --- 底盘基础参数（Car 表，字段名与 vehicle.gd 导出变量一一对应）---
 	v.vehicle_mass = maxf(500.0, float(cfg.weight) + stats.mass)
 	v.max_torque = float(cfg.max_torque) * (1.0 + stats.accel * K_ACCEL_TORQUE) * torque_scale
@@ -39,7 +39,7 @@ static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, weather: Weath
 	v.coefficient_of_drag = maxf(0.12, float(cfg.coefficient_of_drag) + stats.aero * K_AERO_DRAG)
 
 	# --- 轮胎（表面键固定 Road/Dirt/Grass，与赛道碰撞体分组对应）---
-	var w := WeatherEnv.surface_mod(weather)
+	var w := WeatherEnv.surface_mod_cfg(env)
 	var road: float = 3.0 * (1.0 + stats.grip_road * K_GRIP_ROAD) * w.Road
 	var dirt: float = 2.4 * (1.0 + stats.grip_offroad * K_GRIP_OFFROAD) * w.Dirt
 	var grass: float = 2.0 * (1.0 + stats.grip_offroad * K_GRIP_OFFROAD * 0.6)

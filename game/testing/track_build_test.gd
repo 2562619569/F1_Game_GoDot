@@ -58,7 +58,7 @@ func _ready() -> void:
 	var builder := TrackBuilder.new()
 	add_child(builder)
 	builder.build(data)
-	builder.setup(WeatherEnv.Type.SUNNY)
+	builder.setup(WeatherEnv.cfg(WeatherEnv.Type.SUNNY))
 	ok(builder.get_node_or_null("FinishGate") != null, "FinishGate 生成")
 	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+墙)" % get_tree().get_nodes_in_group("Road").size())
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())

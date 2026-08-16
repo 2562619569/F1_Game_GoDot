@@ -5,13 +5,13 @@ func _ready() -> void:
 	Match.auto_test = true
 	var track := preload("res://game/race/tracks/track_test.tscn").instantiate()
 	add_child(track)
-	track.setup(WeatherEnv.Type.SUNNY)
+	track.setup(WeatherEnv.cfg(WeatherEnv.Type.SUNNY))
 
 	var root := Node3D.new()
 	root.position = Vector3(0, 0, -6)
 	var v: Vehicle = preload("res://addons/gevp/scenes/arcade_car.tscn").instantiate()
 	v.position = Vector3(0, 0.95, 0)
-	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), WeatherEnv.Type.SUNNY, 1.0)
+	CarBuilder.apply(v, Match.car_cfg(601), Match.get_stats(), WeatherEnv.cfg(WeatherEnv.Type.SUNNY), 1.0)
 	CarMeshBuilder.attach_visual(v, 601)  # 美术装配，缺资源自动回退占位视觉
 	root.add_child(v)
 	add_child(root)

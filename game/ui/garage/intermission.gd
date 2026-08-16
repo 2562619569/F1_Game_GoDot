@@ -79,7 +79,7 @@ func _render_next() -> void:
 	next_title.text = "NEXT ROUND  ·  %s" % String(Match.round_cfg(Match.round_index + 1).name).to_upper()
 	var map := Match.map_cfg(Match.upcoming_map_id)
 	map_name.text = String(map.name)
-	var wcfg := WeatherEnv.cfg(WeatherEnv.id(String(map.weather)))
+	var wcfg := WeatherEnv.load_map_env(Match.upcoming_map_id)  # 天气来自地图 env 文件
 	weather_chip.text = "[ %s ]" % wcfg.label
 	weather_chip.add_theme_color_override("font_color", wcfg.chip)
 	map_desc.text = String(map.desc)

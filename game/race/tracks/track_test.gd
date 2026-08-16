@@ -4,7 +4,7 @@ extends Node3D
 ## - 高危分支：Dirt 组，右侧绕行 + 飞坡，必出高稀有度改件；
 ## - 起点排位区 z≈0，终点门 z=-500。
 ## 后期正式地图替换：实现同名的 finish_z / main_route_points /
-## hazard_route_points / setup(weather) 接口即可无缝换图。
+## hazard_route_points / setup(env) 接口即可无缝换图。
 
 const FINISH_Z := -500.0
 const MAIN_LOOT_Z_FROM := -70.0
@@ -16,14 +16,17 @@ const HAZARD_LOOT_POINTS := [
 	Vector3(20, 0.9, -270),
 ]
 
-func setup(weather: WeatherEnv.Type) -> void:
-	var c := WeatherEnv.cfg(weather)
-	($Road/Mesh.material_override as StandardMaterial3D).albedo_color = c.road_c
-	($BranchMid/Mesh.material_override as StandardMaterial3D).albedo_color = c.dirt_c
-	($BranchEntry/Mesh.material_override as StandardMaterial3D).albedo_color = c.dirt_c
-	($BranchExit/Mesh.material_override as StandardMaterial3D).albedo_color = c.dirt_c
-	($Ramp/Mesh.material_override as StandardMaterial3D).albedo_color = c.dirt_c
-	($BaseGrass/Mesh.material_override as StandardMaterial3D).albedo_color = c.grass
+func setup(env: Dictionary) -> void:
+	($Road/Mesh.material_override as StandardMaterial3D).albedo_color = env.road_c
+	if bool(env.get("wet", false)):
+		($Road/Mesh.material_override as StandardMaterial3D).roughness = 0.22
+		($Road/Mesh.material_override as StandardMaterial3D).metallic = 0.25
+	else:
+		($Road/Mesh.material_override as StandardMaterial3D).roughness = 0.9
+		($Road/Mesh.material_override as StandardMaterial3D).metallic = 0.0
+	for path in ["BranchMid", "BranchEntry", "BranchExit", "Ramp"]:
+		(get_node(path + "/Mesh").material_override as StandardMaterial3D).albedo_color = env.dirt_c
+	($BaseGrass/Mesh.material_override as StandardMaterial3D).albedo_color = env.grass
 
 func get_finish_z() -> float:
 	return FINISH_Z

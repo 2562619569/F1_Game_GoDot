@@ -82,7 +82,7 @@ def read_map_table():
                     if not header_idx:
                         for ci, cell in enumerate(row):
                             val = str(cell).strip().lower() if cell is not None else ""
-                            if val in ("id", "name", "desc", "weather"):
+                            if val in ("id", "name", "desc"):
                                 header_idx[val] = ci
                         if "id" not in header_idx or "name" not in header_idx:
                             continue
@@ -94,7 +94,6 @@ def read_map_table():
                         "id": int(get("id")),
                         "name": str(get("name") or ""),
                         "desc": str(get("desc") or ""),
-                        "weather": str(get("weather") or ""),
                     })
                 break
         finally:
@@ -102,6 +101,16 @@ def read_map_table():
     except Exception:
         rows_out = []
     return rows_out
+
+
+def read_env_preset(mid):
+    """Map environment preset from map_<id>_env.json (env settings live beside, not inside, map json)."""
+    f = DATA_DIR / ("map_%d_env.json" % mid)
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+        return str(d.get("preset", ""))
+    except Exception:
+        return ""
 
 
 def default_map_template(meta):
@@ -157,6 +166,8 @@ class Handler(SimpleHTTPRequestHandler):
             files = {}
             if DATA_DIR.is_dir():
                 for f in sorted(DATA_DIR.glob("map_*.json")):
+                    if f.name.endswith("_env.json"):
+                        continue  # 环境文件与地图几何分离，不作为地图列出
                     try:
                         d = json.loads(f.read_text(encoding="utf-8"))
                         baked = d.get("baked", {}).get("main", [])
@@ -175,7 +186,7 @@ class Handler(SimpleHTTPRequestHandler):
                     maps.append({
                         "id": fid,
                         "name": (fj or m)["name"],
-                        "weather": m.get("weather", ""),
+                        "weather": read_env_preset(fid),
                         "desc": m.get("desc", ""),
                         "has_file": fid in files,
                         "length": fj["length"] if fj else 0,
@@ -185,7 +196,7 @@ class Handler(SimpleHTTPRequestHandler):
                     maps.append({
                         "id": fid,
                         "name": fj["name"],
-                        "weather": "",
+                        "weather": read_env_preset(fid),
                         "desc": "",
                         "has_file": True,
                         "length": fj["length"],

@@ -16,19 +16,21 @@ const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
 
 ## 装配整场回合世界。finish_cb / loot_cb 为冲线与拾取信号回调（由 RaceManager 注入）。
+## 环境取 race.env_cfg（地图 env 文件合成产物，见 WeatherEnv.load_map_env）。
 ## 返回 {track, track_data, racers, player_racer, player_torque}。
-static func build(race: RaceManager, map_id: int, weather: WeatherEnv.Type, finish_cb: Callable, loot_cb: Callable) -> Dictionary:
-	# --- 赛道 + 天气环境 ---
+static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: Callable) -> Dictionary:
+	var env: Dictionary = race.env_cfg
+	# --- 赛道 + 地图环境 ---
 	var t := _load_track(race, map_id)
 	var track: Node3D = t.track
 	var track_data: TrackData = t.data
-	track.setup(weather)
+	track.setup(env)
 	track.get_node("FinishGate").body_entered.connect(finish_cb)
 	var we := WorldEnvironment.new()
-	we.environment = WeatherEnv.make_env(weather)
+	we.environment = WeatherEnv.make_env_cfg(env)
 	race.add_child(we)
 	var sun := DirectionalLight3D.new()
-	WeatherEnv.setup_light(sun, weather)
+	WeatherEnv.setup_light_cfg(sun, env)
 	race.add_child(sun)
 
 	# --- 掉落 ---
@@ -98,7 +100,7 @@ static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackDat
 				used[free_no] = true
 
 	# 玩家
-	var player := _make_racer(race, track_data, Match.PLAYER_NAME, Match.car_id, Match.get_stats(), grid[Match.PLAYER_NAME], 1.0, true)
+	var player := _make_racer(race, track_data, Match.PLAYER_NAME, Match.car_id, Match.get_stats(), grid[Match.PLAYER_NAME], 1.0, true, 0, Match.appearance())
 	racers.append(player)
 
 	# AI（随机装配 1~2 件改件制造差异）
@@ -112,10 +114,10 @@ static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackDat
 		if randf() < 0.5:
 			eq["tactical"] = Match.roll_part("tactical", 2)
 		var skill: float = d.skill + randf_range(-0.02, 0.02)
-		racers.append(_make_racer(race, track_data, d.name, d.car_id, Match.stats_for_car(d.car_id, eq), grid[d.name], skill, false, i))
+		racers.append(_make_racer(race, track_data, d.name, d.car_id, Match.stats_for_car(d.car_id, eq), grid[d.name], skill, false, i, Match.appearance_for_car(eq)))
 	return player
 
-static func _make_racer(race: RaceManager, track_data: TrackData, rname: String, cid: int, stats: Dictionary, grid_no: int, torque_scale: float, is_player: bool, ai_idx := 0) -> Racer:
+static func _make_racer(race: RaceManager, track_data: TrackData, rname: String, cid: int, stats: Dictionary, grid_no: int, torque_scale: float, is_player: bool, ai_idx := 0, appearance := {}) -> Racer:
 	var root := Node3D.new()
 	root.name = rname
 	var v: Vehicle = CAR_SCENE.instantiate()
@@ -123,8 +125,8 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	if track_data != null:
 		root.rotation.y = track_data.grid_heading(grid_no)  # 车头朝起点切线
 	v.position = Vector3(0, 0.95, 0)
-	CarBuilder.apply(v, Match.car_cfg(cid), stats, race.weather, torque_scale)
-	CarMeshBuilder.attach_visual(v, cid)  # 美术装配，缺资源自动回退占位视觉
+	CarBuilder.apply(v, Match.car_cfg(cid), stats, race.env_cfg, torque_scale)
+	CarMeshBuilder.attach_visual(v, cid, appearance)  # 美术装配，缺资源自动回退占位视觉
 	root.add_child(v)
 	race.add_child(root)
 	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])

@@ -8,6 +8,7 @@ extends Node
 
 signal backpack_changed
 signal equipped_changed
+signal cosmetics_changed
 
 const PLAYER_NAME := "YOU"
 ## AI 对手：名字 / 底盘 / 强度系数（作用于扭矩，制造名次差异）
@@ -20,6 +21,9 @@ const AI_DEFS := [
 ## 性能槽类别（受 perf_slots 限制）与功能槽类别（受 func_slots 限制）
 const PERF_CATEGORIES := ["engine", "tires", "aero", "chassis"]
 const FUNC_CATEGORIES := ["tactical"]
+
+## 外观槽类别（纯外观件：不占性能/功能槽、不进掉落，默认全解锁）
+const COSMETIC_CATEGORIES := ["wheel"]
 
 ## 改件稀有度颜色（UI 与掉落物共用）
 const RARITY_COLORS := [
@@ -35,6 +39,7 @@ const RARITY_NAMES := ["", "Common", "Rare", "Epic", "Legendary"]
 var car_id := 601                  # 玩家所选底盘（Car 表 id，601~ 段）
 var backpack: Array = []           # 无限背包：拥有的改件 id 列表
 var equipped := {}                 # category -> part_id（同类型唯一装配）
+var cosmetics := {}                # category -> cosmetic_id（外观件装配，独立于 equipped）
 
 var round_index := 0               # 当前回合序号（1~round_count）
 var round_history: Array = []      # 每回合结算 [{name, is_player, rank, time, dnf}]
@@ -50,6 +55,7 @@ func reset() -> void:
 	car_id = 601
 	backpack = []
 	equipped = {}
+	cosmetics = {}
 	round_index = 0
 	round_history = []
 	next_grid = {}
@@ -57,6 +63,7 @@ func reset() -> void:
 	champion = ""
 	equipped_changed.emit()
 	backpack_changed.emit()
+	cosmetics_changed.emit()
 
 # ---------------- 配表读取 ----------------
 
@@ -130,6 +137,50 @@ func _count_in(cats: Array) -> int:
 		if equipped.has(c):
 			n += 1
 	return n
+
+# ---------------- 外观件（纯装饰，不占改件槽） ----------------
+
+func cosmetic_cfg(cid: int) -> Dictionary:
+	return Settings.cosmetic.data[cid]
+
+## 类别默认外观件 id（该类别最小 id，即建表首行）
+func default_cosmetic_id(category: String) -> int:
+	var best := -1
+	for c in Settings.cosmetic.data.values():
+		if c.category == category and (best < 0 or c.id < best):
+			best = c.id
+	return best
+
+## 类别当前外观件 id（未选择时取默认）
+func cosmetic_id(category: String) -> int:
+	return cosmetics.get(category, default_cosmetic_id(category))
+
+func set_cosmetic(category: String, cid: int) -> void:
+	if not Settings.cosmetic.data.has(cid) or Settings.cosmetic.data[cid].category != category:
+		push_warning("Match: %d 不是 %s 类外观件，忽略" % [cid, category])
+		return
+	if cosmetics.get(category, -1) == cid:
+		return
+	cosmetics[category] = cid
+	cosmetics_changed.emit()
+
+## 统一外观描述（CarMeshBuilder.attach_visual 消费）：
+##   wheel = 轮毂资产 id（外观件装配）；tire = 轮胎资产 id（已装轮胎改件的 model 列，
+##   未装 = 原厂胎）。未来车漆/尾翼等外观项在本 dict 加 key 扩展，下游签名不变。
+## hub_model 传空串 = 用玩家外观件装配；AI 侧用 appearance_for_car 取类别默认。
+func appearance(eq := equipped, hub_model := "") -> Dictionary:
+	if hub_model == "":
+		hub_model = String(cosmetic_cfg(cosmetic_id("wheel")).model)
+	var tire_model := String(CarMeshBuilder.DEFAULT_TIRE)
+	if eq.has("tires"):
+		var m := String(part_cfg(eq["tires"]).model)
+		if m != "":
+			tire_model = m
+	return {"wheel": hub_model, "tire": tire_model}
+
+## AI 车辆外观：胎模跟随其随机装配，外观件用类别默认（AI 暂无个性化）
+func appearance_for_car(eq: Dictionary) -> Dictionary:
+	return appearance(eq, String(cosmetic_cfg(default_cosmetic_id("wheel")).model))
 
 # ---------------- 属性合成（底盘 + 已装备改件） ----------------
 

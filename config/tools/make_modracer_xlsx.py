@@ -72,16 +72,16 @@ part_rows = [
 for row in part_rows:
     part.append(row)
 
-# ---------------------------------------------------------------- 地图表
+# ---------------------------------------------------------------- 地图表（天气已迁移到地图 env 文件，见 WeatherEnv）
 map_ = wb.create_sheet("地图-map")
-map_.append(["int", "tr_string", "string", "string", "int", "int", "int", "bool", "tr_string"])
-map_.append(["编号", "地图名", "地形", "天气词缀", "直道占比%", "弯道数", "跳台数", "有高风险分支", "地图描述"])
-map_.append(["id", "name", "terrain", "weather", "straight_ratio", "corner_count", "jump_count", "hazard_branch", "desc"])
+map_.append(["int", "tr_string", "string", "int", "int", "int", "bool", "tr_string"])
+map_.append(["编号", "地图名", "地形", "直道占比%", "弯道数", "跳台数", "有高风险分支", "地图描述"])
+map_.append(["id", "name", "terrain", "straight_ratio", "corner_count", "jump_count", "hazard_branch", "desc"])
 map_rows = [
-    [1, "环湖高速公路", "asphalt", "sunny", 70, 4, 0, False, "长直道为主，极速车的天堂。"],
-    [2, "砂石荒漠峡谷", "gravel", "sandstorm", 40, 8, 6, True, "陡坡跳台+泥地打滑，越野胎与强化悬挂主场。"],
-    [3, "雨雾山道", "asphalt", "storm", 30, 14, 2, True, "暴雨湿滑连续弯，雨胎+大下压尾翼克制。"],
-    [4, "冰雪极地走廊", "snow", "snow", 50, 9, 4, True, "低温积雪路面，抓地与防滑是生死线。"],
+    [1, "环湖高速公路", "asphalt", 70, 4, 0, False, "长直道为主，极速车的天堂。"],
+    [2, "砂石荒漠峡谷", "gravel", 40, 8, 6, True, "陡坡跳台+泥地打滑，越野胎与强化悬挂主场。"],
+    [3, "雨雾山道", "asphalt", 30, 14, 2, True, "暴雨湿滑连续弯，雨胎+大下压尾翼克制。"],
+    [4, "冰雪极地走廊", "snow", 50, 9, 4, True, "低温积雪路面，抓地与防滑是生死线。"],
 ]
 for row in map_rows:
     map_.append(row)

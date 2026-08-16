@@ -1,6 +1,7 @@
 /* ModRacer 美术资源编辑器
- * 车壳（cars/<id>/body.json：前/后轴 yz + 车体半宽 body_width）与轮毂（wheels/<id>/wheel.json，中心点）的
- * 可视化定义工具。写回依赖 File System Access API；不支持时降级为「读取目录 + 下载 JSON」。
+ * 车壳（cars/<id>/body.json：前/后轴 yz + 车体半宽 body_width）与轮毂（wheels/<id>/hub.json，中心点）的
+ * 可视化定义工具。轮毂为纯外观件（物理半径/胎宽在 tires/<id>/tire.json，不在本编辑器范围）。
+ * 写回依赖 File System Access API；不支持时降级为「读取目录 + 下载 JSON」。
  * 坐标约定与 docs/美术资源与车辆结构.md 一致：GLB 场景根空间、米、Y-up、车头朝 -Z。
  */
 (function () {
@@ -12,7 +13,7 @@ var AXLE_LABEL = { front: '前轴', rear: '后轴' };
 var AXLE_COLOR = { front: 0x37c8ff, rear: 0xffd23e };
 var AXLE_DEFAULT = { front: { y: 0.35, z: -1.2 }, rear: { y: 0.35, z: 1.2 } };
 var DEFAULT_BODY_WIDTH = 0.9;
-var DEFAULT_WHEEL_WIDTH = 0.2;          // wheel.json 缺 width 时齐边推导用
+var DEFAULT_WHEEL_WIDTH = 0.2;          // hub.json 无胎宽，预览齐边推导的兜底值
 var WHEEL_SLOT_KEYS = ['front_left', 'front_right', 'rear_left', 'rear_right'];
 var WIDTH_COLOR = 0xb48cff;             // 车宽手柄（紫）
 var MIN_BODY_WIDTH = 0.1;
@@ -463,7 +464,7 @@ async function listDir(kind) {
         var hasModel = false, hasJson = false;
         for await (var f of entry.values()) {
           if (f.name.match(/\.glb$/i) || f.name.match(/\.gltf$/i)) hasModel = true;
-          if (f.name === (kind === 'cars' ? 'body.json' : 'wheel.json')) hasJson = true;
+          if (f.name === (kind === 'cars' ? 'body.json' : 'hub.json')) hasJson = true;
         }
         out.push({ id: entry.name, hasJson: hasJson, hasModel: hasModel });
       }
@@ -476,7 +477,7 @@ async function listDir(kind) {
       var id = m[1];
       if (!seen[id]) { seen[id] = { id: id, hasJson: false, hasModel: false }; out.push(seen[id]); }
       if (m[2].match(/\.glb$/i) || m[2].match(/\.gltf$/i)) seen[id].hasModel = true;
-      if (m[2] === (kind === 'cars' ? 'body.json' : 'wheel.json')) seen[id].hasJson = true;
+      if (m[2] === (kind === 'cars' ? 'body.json' : 'hub.json')) seen[id].hasJson = true;
     });
   }
   out.sort(function (a, b) { return a.id < b.id ? -1 : 1; });
@@ -910,7 +911,7 @@ function markActiveInList() {
 }
 
 async function loadMeta(kind, id) {
-  var jsonName = kind === 'cars' ? 'body.json' : 'wheel.json';
+  var jsonName = kind === 'cars' ? 'body.json' : 'hub.json';
   var text = await readFileText(relPath([kind, id, jsonName]));
   var j = {};
   if (text) {
@@ -954,11 +955,9 @@ async function loadMeta(kind, id) {
     j.version = j.version || 1;
     j.id = id;
     j.name = j.name || '';
-    j.model = j.model || '';
+    j.model = j.model || 'hub.glb';
     var c = j.center || [0, 0, 0];
     j.center = [r4(+c[0]), r4(+c[1]), r4(+c[2])];
-    j.radius = j.radius != null ? r4(+j.radius) : 0.3;
-    j.width = j.width != null ? r4(+j.width) : 0.2;
   }
   return j;
 }
@@ -1473,8 +1472,6 @@ function renderPanel(rebuildAll) {
       setMarkerPos('center', new THREE.Vector3(x, y, z), { silent: true, noMirror: true });
       refreshPanelValues();
     }));
-    panel.appendChild(fieldInput('半径 radius', S.json.radius, function (v) { S.json.radius = r4(v); scheduleSave(); }, 'number'));
-    panel.appendChild(fieldInput('宽度 width', S.json.width, function (v) { S.json.width = r4(v); scheduleSave(); }, 'number'));
 
     var btnCenter = document.createElement('button');
     btnCenter.textContent = '吸附到包围盒中心';
@@ -1552,14 +1549,14 @@ function refreshPanelValues() {
   if (bwInp && document.activeElement !== bwInp) bwInp.value = fmt(S.json.body_width);
 }
 
-// ---------------- 自动保存（防抖写回 body.json / wheel.json） ----------------
+// ---------------- 自动保存（防抖写回 body.json / hub.json） ----------------
 var saveTimer = null;
 var saving = false;
 var pendingSave = null;   // {path, text} 快照，保证切换资产后仍保存正确文件
 
 function scheduleSave() {
   if (!S.json || !S.assetId) return;
-  var path = S.mode === 'body' ? relPath(['cars', S.assetId, 'body.json']) : relPath(['wheels', S.assetId, 'wheel.json']);
+  var path = S.mode === 'body' ? relPath(['cars', S.assetId, 'body.json']) : relPath(['wheels', S.assetId, 'hub.json']);
   var text = JSON.stringify(orderedJson(), null, 2) + '\n';
   pendingSave = { path: path, text: text };
   if (saveTimer) clearTimeout(saveTimer);
@@ -1589,8 +1586,8 @@ function orderedJson() {
   var j = S.json;
   if (S.mode === 'wheel') {
     var out = {
-      version: j.version, id: j.id, name: j.name || '', model: j.model || 'wheel.glb',
-      center: j.center.slice(), radius: j.radius, width: j.width
+      version: j.version, id: j.id, name: j.name || '', model: j.model || 'hub.glb',
+      center: j.center.slice()
     };
     Object.keys(j).forEach(function (k) { if (!(k in out)) out[k] = j[k]; });
     return out;
