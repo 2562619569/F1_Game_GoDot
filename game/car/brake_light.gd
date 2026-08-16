@@ -1,16 +1,17 @@
 class_name BrakeLight
 extends Node3D
 ## 刹车灯视觉层：按 body.json 的 materials.brake_light 在车壳 GLB 中按材质名找到刹车灯网格，
-## 复制材质并点亮红色自发光（未刹车时保持示宽灯微亮），刹车时经弹簧阻尼平滑升至高亮，
+## 复制材质并点亮红色自发光（未刹车时常亮红色示位光），刹车时经弹簧阻尼平滑升至高亮，
 ## 并在灯组包围盒中心挂一盏红色 OmniLight3D 增强可见度。纯表现层，不改任何物理量。
-## GLB 实例间共享材质资源，必须 duplicate 出每车独立副本，否则多车互相串色。
+## GLB 实例间共享材质资源，必须 duplicate 出每车独立副本，且用 surface_override_material
+## 按实例覆盖——直接改共享网格会让所有车的刹车灯跟着最后装配那辆的状态走。
 
 @export_group("发光")
 @export var brake_color := Color(1.0, 0.08, 0.05)
-## 未刹车时的示位灯亮度（0 = 熄灭）
-@export var idle_energy := 0.15
+## 未刹车时的示位灯亮度：常亮可感知的红色自发光（0 = 熄灭）
+@export var idle_energy := 0.4
 ## 满刹车时的自发光强度
-@export var braking_energy := 2.5
+@export var braking_energy := 3.0
 
 @export_group("弹簧（响应频率 Hz / 阻尼比）")
 @export var frequency := 10.0
@@ -29,15 +30,21 @@ var _energy_vel := 0.0
 
 ## 由 CarMeshBuilder 在装配时调用；body_visual 为本节点父节点（材质在其中查找）。
 ## materials_meta 为 body.json 的 materials 字段；brake_light 为空或找不到材质则自动移除本节点。
+## brake_light 材质名支持逗号分隔多个（如「材质.009, 材质.010」= 尾灯 + 高位刹车灯）。
 func setup(v: Vehicle, body_visual: Node, materials_meta: Dictionary) -> void:
 	_vehicle = v
-	var wanted := str(materials_meta.get("brake_light", "")).strip_edges()
-	if wanted.is_empty():
+	var raw := str(materials_meta.get("brake_light", "")).strip_edges()
+	if raw.is_empty():
 		_detach("body.json 未标记刹车灯材质")
 		return
+	var wanted: Array[String] = []
+	for part in raw.split(","):
+		var p := part.strip_edges()
+		if not p.is_empty():
+			wanted.append(p)
 	_collect(body_visual, wanted)
 	if _materials.is_empty():
-		_detach("车壳中未找到刹车灯材质「%s」" % wanted)
+		_detach("车壳中未找到刹车灯材质「%s」" % raw)
 		return
 	for m in _materials:
 		m.emission_enabled = true
@@ -64,33 +71,40 @@ func _process(delta: float) -> void:
 func debug_info() -> Dictionary:
 	return {"materials": _materials.size(), "energy": _energy, "light": _light != null}
 
-## 在 body_visual 子树内按材质名收集网格表面材质（大小写不敏感精确匹配，退化到子串匹配）。
-## 每个原材质只复制一份；用 surface_set_material 写回，避免改动共享的原资源。
-func _collect(body_visual: Node, wanted: String) -> void:
-	var wanted_lower := wanted.to_lower()
+## 在 body_visual 子树内按材质名收集网格表面材质（任一名字命中即可，大小写不敏感
+## 精确匹配，退化到子串匹配）。每个原材质只复制一份，经 surface_override_material
+## 按实例覆盖（不改共享网格资源，多车各自持有独立副本互不串色）。
+func _collect(body_visual: Node, wanted: Array[String]) -> void:
 	var duplicates := {}   # 原材质 instance_id -> 副本（多表面/多网格共享同一副本）
 	for mi in body_visual.find_children("*", "MeshInstance3D"):
-		var mesh := mi.mesh as ArrayMesh
+		var mesh_mi := mi as MeshInstance3D
+		var mesh := mesh_mi.mesh as ArrayMesh
 		var any_hit := false
 		if mesh:
 			for i in mesh.get_surface_count():
-				var dup := _dup_if_match(mesh.surface_get_material(i), wanted_lower, duplicates)
+				var dup := _dup_if_match(mesh.surface_get_material(i), wanted, duplicates)
 				if dup:
-					mesh.surface_set_material(i, dup)
+					mesh_mi.set_surface_override_material(i, dup)
 					any_hit = true
-		var ov := _dup_if_match(mi.material_override, wanted_lower, duplicates)
+		var ov := _dup_if_match(mesh_mi.material_override, wanted, duplicates)
 		if ov:
-			mi.material_override = ov
+			mesh_mi.material_override = ov
 			any_hit = true
 		if any_hit:
-			_track_bounds(body_visual, mi)
+			_track_bounds(body_visual, mesh_mi)
 
-func _dup_if_match(mat: Material, wanted_lower: String, duplicates: Dictionary) -> StandardMaterial3D:
+func _dup_if_match(mat: Material, wanted: Array[String], duplicates: Dictionary) -> StandardMaterial3D:
 	if mat == null or not (mat is StandardMaterial3D):
 		return null
 	# Material 是 Resource，名字属性为 resource_name（Node 才是 name）
 	var name_lower := str(mat.resource_name).to_lower()
-	if name_lower != wanted_lower and not name_lower.contains(wanted_lower):
+	var hit := false
+	for w in wanted:
+		var w_lower := w.to_lower()
+		if name_lower == w_lower or name_lower.contains(w_lower):
+			hit = true
+			break
+	if not hit:
 		return null
 	var id := mat.get_instance_id()
 	if not duplicates.has(id):

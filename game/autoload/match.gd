@@ -165,12 +165,16 @@ func set_cosmetic(category: String, cid: int) -> void:
 	cosmetics_changed.emit()
 
 ## 统一外观描述（CarMeshBuilder.attach_visual 消费）：
-##   wheel = 轮毂资产 id（外观件装配）；tire = 轮胎资产 id（已装轮胎改件的 model 列，
-##   未装 = 原厂胎）。未来车漆/尾翼等外观项在本 dict 加 key 扩展，下游签名不变。
-## hub_model 传空串 = 用玩家外观件装配；AI 侧用 appearance_for_car 取类别默认。
+##   wheel = 轮毂资产 id；tire = 轮胎资产 id（已装轮胎改件的 model 列，未装 = 原厂胎）。
+##   轮毂优先级：玩家已选外观件 > Car 配表 wheel 列（各车默认轮毂）> DEFAULT_HUB 兜底。
+##   未来车漆/尾翼等外观项在本 dict 加 key 扩展，下游签名不变。
+## hub_model 传空串 = 按上述优先级取默认；AI 侧用 appearance_for_car 取其车型默认。
 func appearance(eq := equipped, hub_model := "") -> Dictionary:
 	if hub_model == "":
-		hub_model = String(cosmetic_cfg(cosmetic_id("wheel")).model)
+		if cosmetics.has("wheel"):
+			hub_model = String(cosmetic_cfg(cosmetics["wheel"]).model)
+		else:
+			hub_model = default_hub_for_car(car_id)
 	var tire_model := String(CarMeshBuilder.DEFAULT_TIRE)
 	if eq.has("tires"):
 		var m := String(part_cfg(eq["tires"]).model)
@@ -178,9 +182,14 @@ func appearance(eq := equipped, hub_model := "") -> Dictionary:
 			tire_model = m
 	return {"wheel": hub_model, "tire": tire_model}
 
-## AI 车辆外观：胎模跟随其随机装配，外观件用类别默认（AI 暂无个性化）
-func appearance_for_car(eq: Dictionary) -> Dictionary:
-	return appearance(eq, String(cosmetic_cfg(default_cosmetic_id("wheel")).model))
+## AI 车辆外观：胎模跟随其随机装配，轮毂用其车型默认（Car 配表 wheel 列）
+func appearance_for_car(cid: int, eq: Dictionary) -> Dictionary:
+	return appearance(eq, default_hub_for_car(cid))
+
+## 车型默认轮毂：Car 配表 wheel 列，空串/缺失回退 CarMeshBuilder.DEFAULT_HUB
+func default_hub_for_car(cid: int) -> String:
+	var w := String(car_cfg(cid).get("wheel", ""))
+	return w if w != "" else String(CarMeshBuilder.DEFAULT_HUB)
 
 # ---------------- 属性合成（底盘 + 已装备改件） ----------------
 

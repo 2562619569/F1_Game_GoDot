@@ -114,7 +114,7 @@ static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackDat
 		if randf() < 0.5:
 			eq["tactical"] = Match.roll_part("tactical", 2)
 		var skill: float = d.skill + randf_range(-0.02, 0.02)
-		racers.append(_make_racer(race, track_data, d.name, d.car_id, Match.stats_for_car(d.car_id, eq), grid[d.name], skill, false, i, Match.appearance_for_car(eq)))
+		racers.append(_make_racer(race, track_data, d.name, d.car_id, Match.stats_for_car(d.car_id, eq), grid[d.name], skill, false, i, Match.appearance_for_car(d.car_id, eq)))
 	return player
 
 static func _make_racer(race: RaceManager, track_data: TrackData, rname: String, cid: int, stats: Dictionary, grid_no: int, torque_scale: float, is_player: bool, ai_idx := 0, appearance := {}) -> Racer:

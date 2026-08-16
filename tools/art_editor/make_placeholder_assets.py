@@ -174,7 +174,7 @@ AUTO_RULES = [
 # 预设材质球（引擎效果）默认参数：与 app.js PRESET_DEFAULT_PARAMS / material_presets.gd 同构
 PRESET_DEFAULT_PARAMS = {
     "paint": {"color": "#c23a2f", "glancing": "#2a0d0b", "clearcoat": 1.0},
-    "headlight_lens": {"color": "#ffffff", "alpha": 0.35},
+    "headlight_lens": {"color": "#ffffff", "alpha": 0.1},
     "glass": {"color": "#05060a", "alpha": 1.0},
 }
 PRESET_AUTO_RULES = [

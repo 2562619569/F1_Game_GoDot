@@ -52,7 +52,7 @@ var PRESET_SLOTS = [
 ];
 var PRESET_DEFAULT_PARAMS = {
   paint: { color: '#c23a2f', glancing: '#2a0d0b', clearcoat: 1.0 },
-  headlight_lens: { color: '#ffffff', alpha: 0.35 },
+  headlight_lens: { color: '#ffffff', alpha: 0.1 },
   glass: { color: '#05060a', alpha: 1.0 }
 };
 var PRESET_AUTORULES = [

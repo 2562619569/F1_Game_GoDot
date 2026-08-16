@@ -17,6 +17,11 @@ extends RayCast3D
 ## try parenting it to a [Node3D] and using that as the wheel node instead.
 @export var wheel_node : Node3D
 
+## 跟随悬挂高度与转向、但**不随轮自转**的视觉挂点（如刹车盘/卡钳）。
+## 本地修改：car_mesh_builder 把 BrakePivot 挂在本射线下并赋值到这里，
+## _process 每帧同步悬挂 y——不接的部件请继续挂 wheel_node。
+@export var static_visual : Node3D
+
 ## Visual suspension smoothing frequency (Hz), critically damped. 0 disables.
 ## 本地修改：轮子视觉 y 不再每帧直写悬挂长度，而是过临界阻尼弹簧平滑，消除物理帧噪声直传画面。
 @export var visual_smoothing_frequency := 12.0
@@ -98,6 +103,9 @@ func _process(delta : float) -> void:
 			wheel_node.position.y = _vis_spring_y
 		else:
 			wheel_node.position.y = target_y
+		# 本地修改：刹车盘等不自转件跟随悬挂行程（转向由本射线 rotation.y 天然带动）
+		if static_visual:
+			static_visual.position.y = wheel_node.position.y
 		if not is_zero_approx(beam_axle):
 			var wheel_lookat_vector := (opposite_wheel.transform * opposite_wheel.wheel_node.position) - (transform * wheel_node.position)
 			wheel_node.rotation.z = wheel_lookat_vector.angle_to(Vector3.RIGHT * beam_axle) * signf(wheel_lookat_vector.y * beam_axle)
