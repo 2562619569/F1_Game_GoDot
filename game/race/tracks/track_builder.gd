@@ -8,6 +8,12 @@ extends Node3D
 const WALL_COLOR := Color(0.16, 0.17, 0.19)
 const LINE_COLOR := Color(0.88, 0.88, 0.88)
 
+# 垂直分离,避免与路面共面 z-fighting:草地顶面低于路面最低点,
+# dirt 分支从主路下方穿过(衔接处主路盖在上面),标线浮在路面之上
+const GRASS_DROP := 0.2
+const DIRT_DROP := 0.08
+const MARKING_LIFT := 0.04
+
 var data: TrackData = null
 
 var _road_mat: StandardMaterial3D
@@ -29,7 +35,7 @@ func build(d: TrackData) -> void:
 	add_child(road)
 	for route in data.routes:
 		if String(route["surface"]) == "dirt":
-			add_child(_build_strip(route, "Dirt", _dirt_mat))
+			add_child(_build_strip(route, "Dirt", _dirt_mat, DIRT_DROP))
 
 	# --- 侧墙(仅主路,沿用路面边缘) ---
 	if bool(data.options.get("walls", true)):
@@ -51,7 +57,7 @@ func _mat(c: Color, rough := 0.9) -> StandardMaterial3D:
 
 ## ---------------- 路面条带(网格 + Trimesh 碰撞) ----------------
 
-func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> Node3D:
+func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D, drop := 0.0) -> Node3D:
 	var pts: PackedVector3Array = route["pts"]
 	var tans: PackedVector3Array = route["tans"]
 	var widths: PackedFloat32Array = route["widths"]
@@ -80,11 +86,12 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 		st.add_index(a + 1)
 		st.add_index(a + 2)
 		st.add_index(a + 3)
-	return _body_with_mesh(st.commit(), group)
+	return _body_with_mesh(st.commit(), group, drop)
 
-func _body_with_mesh(mesh: ArrayMesh, group: String) -> StaticBody3D:
+func _body_with_mesh(mesh: ArrayMesh, group: String, drop := 0.0) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.add_to_group(group)
+	body.position.y = -drop
 	var col := CollisionShape3D.new()
 	col.shape = mesh.create_trimesh_shape()
 	body.add_child(col)
@@ -117,7 +124,7 @@ func _build_grass() -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "Grass"
 	body.add_to_group("Grass")
-	body.position = Vector3(cx, y_min - 0.05, cz)
+	body.position = Vector3(cx, y_min - GRASS_DROP - 0.05, cz)
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(w, 0.1, d)
@@ -179,7 +186,7 @@ func _build_markings() -> MeshInstance3D:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var mat := _mat(LINE_COLOR, 0.8)
 	st.set_material(mat)
-	var lift := 0.02
+	var lift := MARKING_LIFT
 
 	# 中心虚线:12m 周期画 6m,宽 0.3
 	var s := 0.0
