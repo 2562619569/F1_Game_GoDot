@@ -84,6 +84,9 @@ game/
 # 引擎声 VNS 移植自检（分层交叉淡化/滞回/事件音效，-s 模式不依赖 autoload）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/engine_audio_check.gd
 
+# 升挡转速下坠自检（换挡窗口内 motor_rpm 收敛到新挡匹配转速）
+"C:/Tools/Godot/Godot.exe" --headless -s game/testing/shift_rev_check.gd
+
 # 首次添加新脚本后需重建类缓存：
 # 同上命令加 --import 参数先跑一次
 ```

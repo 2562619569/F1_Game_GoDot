@@ -174,11 +174,13 @@ AUTO_RULES = [
 # 预设材质球（引擎效果）默认参数：与 app.js PRESET_DEFAULT_PARAMS / material_presets.gd 同构
 PRESET_DEFAULT_PARAMS = {
     "paint": {"color": "#c23a2f", "glancing": "#2a0d0b", "clearcoat": 1.0},
+    "piano_black": {"color": "#0a0a0c", "clearcoat": 1.0},
     "headlight_lens": {"color": "#ffffff", "alpha": 0.1},
-    "glass": {"color": "#05060a", "alpha": 1.0},
+    "glass": {"color": "#05060a"},
 }
 PRESET_AUTO_RULES = [
     ("paint", re.compile(r"paint|车漆|漆|hull|body", re.I)),
+    ("piano_black", re.compile(r"piano|钢琴|烤漆", re.I)),
     ("headlight_lens", re.compile(r"lens|灯罩|罩|cover", re.I)),
     ("glass", re.compile(r"glass|玻璃", re.I)),
 ]

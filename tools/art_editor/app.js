@@ -31,12 +31,17 @@ var MAT_AUTORULES = [
   ['body', /hull|body|paint|chassis|车身|车体/i]
 ];
 // 预设材质球（引擎效果，body.json 的 material_presets 字段）：
-// 标记类型 + 暴露参数；引擎端同构定义见 game/car/material_presets.gd（社区 CC0 shader）。
+// 标记类型 + 暴露参数；引擎端同构定义见 game/car/material_presets.gd。
 var PRESET_SLOTS = [
   { key: 'paint', label: '车漆', color: 0xe0524a,
     params: [
       { key: 'color', label: '颜色', type: 'color' },
       { key: 'glancing', label: '掠射色', type: 'color' },
+      { key: 'clearcoat', label: '清漆', type: 'range' }
+    ] },
+  { key: 'piano_black', label: '钢琴烤漆', color: 0x0a0a0c,
+    params: [
+      { key: 'color', label: '颜色', type: 'color' },
       { key: 'clearcoat', label: '清漆', type: 'range' }
     ] },
   { key: 'headlight_lens', label: '大灯罩', color: 0x8fd8ff,
@@ -46,22 +51,25 @@ var PRESET_SLOTS = [
     ] },
   { key: 'glass', label: '车玻璃', color: 0x39404d,
     params: [
-      { key: 'color', label: '颜色', type: 'color' },
-      { key: 'alpha', label: '不透明度', type: 'range' }
+      { key: 'color', label: '颜色', type: 'color' }
     ] }
 ];
 var PRESET_DEFAULT_PARAMS = {
   paint: { color: '#c23a2f', glancing: '#2a0d0b', clearcoat: 1.0 },
+  piano_black: { color: '#0a0a0c', clearcoat: 1.0 },
   headlight_lens: { color: '#ffffff', alpha: 0.1 },
-  glass: { color: '#05060a', alpha: 1.0 }
+  glass: { color: '#05060a' }
 };
 var PRESET_AUTORULES = [
   ['paint', /paint|车漆|漆|hull|body/i],
+  ['piano_black', /piano|钢琴|烤漆/i],
   ['headlight_lens', /lens|灯罩|罩|cover/i],
   ['glass', /glass|玻璃/i]
 ];
 
-function wheelX(bodyWidth, width) { return bodyWidth - width / 2; }
+// 齐边轮位 x：inset = 轮毂外盘面到轮位距离（hub.json outer；无元数据退回 width/2），
+// 与引擎 car_mesh_builder 的「轮毂外盘面齐 body_width」规则一致
+function wheelX(bodyWidth, inset) { return bodyWidth - inset; }
 function axleOf(k) { return S.json[k + '_axle']; }
 
 var S = {
@@ -941,7 +949,7 @@ async function loadMeta(kind, id) {
       var merged = Object.assign({}, PRESET_DEFAULT_PARAMS[s.key]);
       var src = e.params || {};
       Object.keys(src).forEach(function (k) { if (allowed[k]) merged[k] = src[k]; });
-      psOut[s.key] = { material: e.material || null, params: merged };
+      psOut[s.key] = { material: e.material || null, node: e.node || null, params: merged };
     });
     j.material_presets = psOut;
     AXLES.forEach(function (k) {
@@ -1047,6 +1055,10 @@ async function setPreviewWheel(id) {
   if (!asset.scene) { setStatus('轮毂 ' + id + ' 模型缺失，仅显示标记点', 'err'); return; }
   S.previewWheelWidth = asset.json.width != null ? asset.json.width : DEFAULT_WHEEL_WIDTH;
   S.previewWheelRadius = asset.json.radius != null ? asset.json.radius : 0.3;
+  // 轮位基准：轮毂外盘面（outer）；缺元数据退回 width/2（等价旧胎侧齐边）。
+  // mid_x 为套胎偏移（胎中线对齐轮毂桶身几何中线）
+  S.previewWheelOuter = asset.json.outer != null ? asset.json.outer : S.previewWheelWidth / 2;
+  S.previewWheelMidX = asset.json.mid_x != null ? asset.json.mid_x : 0;
   WHEEL_SLOT_KEYS.forEach(function (k) {
     var g = new THREE.Group();                    // 轮位 + 转向
     var spin = new THREE.Group();                 // 自转
@@ -1062,8 +1074,8 @@ async function setPreviewWheel(id) {
 function updateWheelPreview() {
   if (S.mode !== 'body') return;
   var steer = THREE.MathUtils.degToRad(S.steerDeg);
-  var bw = S.json.body_width, w = S.previewWheelWidth || DEFAULT_WHEEL_WIDTH;
-  var lx = -wheelX(bw, w), rx = wheelX(bw, w);
+  var bw = S.json.body_width;
+  var lx = -wheelX(bw, S.previewWheelOuter), rx = wheelX(bw, S.previewWheelOuter);
   WHEEL_SLOT_KEYS.forEach(function (k) {
     var slot = previewSlots[k];
     if (!slot || !S.json) return;
@@ -1079,11 +1091,12 @@ function positionSemiTires() {
   if (!semiGroup.visible) return;
   var bw = S.json.body_width, w = S.previewWheelWidth || DEFAULT_WHEEL_WIDTH;
   var r = S.previewWheelRadius || 0.3;
-  var lx = -wheelX(bw, w), rx = wheelX(bw, w);
+  var mid = S.previewWheelMidX || 0;               // 套胎偏移：胎中线对齐轮毂桶身中线
+  var lx = -wheelX(bw, S.previewWheelOuter), rx = wheelX(bw, S.previewWheelOuter);
   WHEEL_SLOT_KEYS.forEach(function (k) {
     var m = semiTires[k];
     var a = axleOf(k.indexOf('front') === 0 ? 'front' : 'rear');
-    m.position.set(k.indexOf('left') >= 0 ? lx : rx, a.y, a.z);
+    m.position.set(k.indexOf('left') >= 0 ? lx - mid : rx + mid, a.y, a.z);
     m.scale.set(r / 0.3, w / 0.2, r / 0.3);   // y 向=厚度（轴沿 X 后）
   });
 }
@@ -1517,7 +1530,7 @@ function renderPanel(rebuildAll) {
 
     var hint2 = document.createElement('div');
     hint2.className = 'hint';
-    hint2.textContent = '轴标记可拖拽（x 恒 0）或数值输入 y/z；body_width 为车体最宽处半宽，四轮按所选轮毂 width 齐边推导（x = ±(body_width − width/2)）。';
+    hint2.textContent = '轴标记可拖拽（x 恒 0）或数值输入 y/z；body_width 为车体最宽处半宽，四轮按所选轮毂外盘面齐边推导（x = ±(body_width − outer)，outer 为 hub.json 实测值）。';
     panel.appendChild(hint2);
   }
 

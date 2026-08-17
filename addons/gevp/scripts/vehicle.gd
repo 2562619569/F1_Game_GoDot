@@ -22,6 +22,10 @@ extends RigidBody3D
 ## The rate that the steering input changes when steering back to center.
 ## Speed is in units per second.
 @export var countersteer_speed := 11.0
+## Fixed-rate steering return when there is no steering input (key released).
+## Not scaled by vehicle speed, unlike countersteer_speed, so the wheel centers
+## at the same pace at any speed.
+@export var steering_return_speed := 8.0
 ## Reduces steering input based on the vehicle's speed.
 ## Steering speed is divided by the velocity at this magnitude.
 ## The larger the number, the slower the steering at speed.
@@ -100,7 +104,6 @@ extends RigidBody3D
 ## A multiplier for the torque used to dampen rotation while airborne.
 @export var stability_upright_damping := 1000.0
 
-
 @export_group("Motor")
 ## Maximum motor torque in NM.
 @export var max_torque := 300.0
@@ -131,6 +134,10 @@ extends RigidBody3D
 @export var reverse_ratio := 3.3
 ## Time it takes to change gears on up shifts in seconds
 @export var shift_time := 0.3
+## Time constant for revs falling toward the next gear's wheel-matched RPM
+## during an upshift. Keeps the rev drop inside the shift window instead of
+## dumping it on the clutch at re-engagement.
+@export var shift_rev_fall_response := 0.1
 ## Enables automatic gear changes
 @export var automatic_transmission := true
 ## Timer to prevent the automatic gear shifts changing gears too quickly 
@@ -455,7 +462,16 @@ func initialize():
 		return
 	
 	var default_surface : String = tire_stiffnesses.keys()[0]
-	
+
+	# 本地修改：「标定即静态位」——轮位 y 上抬静态下垂量（行程 × (1 − 静载比)），
+	# 静止时轮心恰落回装配时标定的 axle y（body.json）；否则挂点几何是满压缩
+	# 位置，静态轮心会比标定低半段行程（前 7.5cm / 后 10cm）。放在质心推导前：
+	# 质心仍按抬高后的挂点计算，与上游 GEVP 行为一致。
+	for w in [front_left_wheel, front_right_wheel]:
+		w.position.y += front_spring_length * (1.0 - front_resting_ratio)
+	for w in [rear_left_wheel, rear_right_wheel]:
+		w.position.y += rear_spring_length * (1.0 - rear_resting_ratio)
+
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	mass = vehicle_mass
 	var center_of_gravity := calculate_center_of_gravity(front_weight_distribution)
@@ -666,8 +682,13 @@ func process_steering(delta : float) -> void:
 	## Adjust steering speed based on vehicle speed and max steering angle
 	var steer_speed_correction := steering_speed / (speed * steering_speed_decay) / max_steering_angle
 	
+	## No steering input (key released): center at a fixed rate. The countersteer
+	## rate below is speed-scaled, which snapped back at low speed and dragged at
+	## high speed.
+	if is_zero_approx(steering_input):
+		steer_speed_correction = steering_return_speed
 	## If the steering input is opposite the current steering, apply countersteering speed instead
-	if signf(steering_input) != signf(steering_amount):
+	elif signf(steering_input) != signf(steering_amount):
 		steer_speed_correction = countersteer_speed / (speed * steering_speed_decay)
 	
 	## Check steering slip threshold and reduce steering amount if crossed.
@@ -713,6 +734,10 @@ func process_steering(delta : float) -> void:
 	else:
 		steer_correction_amount = clampf(steer_correction_amount + (steering_speed * delta), 0.0, 1.0)
 	
+	## Fade the velocity-following correction with steering input: at zero input
+	## (key released) it keeps only 35%, so the car settles straight instead of
+	## holding angle through the slide and wandering after release.
+	steer_correction *= 0.35 + 0.65 * absf(steering_input)
 	steer_correction *= steer_correction_amount
 	
 	true_steering_amount = clampf(steering_adjust + steer_correction, -max_steering_angle, max_steering_angle)
@@ -765,8 +790,19 @@ func process_motor(delta : float) -> void:
 		need_clutch = true
 	elif new_rpm > maxf(clutch_out_rpm, idle_rpm):
 		need_clutch = false
-	
+
 	motor_rpm = maxf(motor_rpm, idle_rpm)
+
+	## Pull revs down through an upshift so the motor arrives near the next
+	## gear's wheel-matched RPM when the clutch re-engages. Without this the
+	## revs stay near redline for the whole shift and only drop afterwards,
+	## which the engine audio reads as a flat hold instead of a rev drop.
+	if is_shifting and is_up_shifting and requested_gear >= 1:
+		var upshift_rpm := gear_ratios[requested_gear - 1] * final_drive \
+				* (speed / average_drive_wheel_radius) * ANGULAR_VELOCITY_TO_RPM
+		if upshift_rpm < motor_rpm:
+			motor_rpm = lerpf(motor_rpm, maxf(upshift_rpm, idle_rpm),
+					1.0 - exp(-delta / maxf(shift_rev_fall_response, 0.001)))
 
 func process_clutch(delta : float):
 	if current_gear == 0:

@@ -62,7 +62,7 @@ func _check_rotation() -> void:
 	_note(wrapf(stage._car.rotation.y - y0, -PI, PI) > -100.0 * stage.drag_sensitivity, "反向拖拽可回转")
 	_note(not stage._car.is_physics_processing(), "展车物理已停用（纯视觉道具，旋转不溜车）")
 	_note(stage._car.linear_velocity.length() < 0.001, "展车静止：速度为零")
-	_note(stage._car.position.y > 0.3 and stage._car.position.y < 1.0, "展车摆放在落座高度（台面上方）")
+	_note(stage._car.position.y > 0.0 and stage._car.position.y < 0.7, "展车摆放在落座高度（车库地坪上方）")
 
 func _check_close() -> void:
 	var state := {"closed": false}
@@ -76,7 +76,7 @@ func _check_initial() -> void:
 	_note(showroom.current_car_id == 601, "初始展示 Car 表最小 id 601")
 	var live := _live_cars()
 	_note(live.size() == 1 and live[0] is Vehicle and not live[0].is_physics_processing(), "展台上有且仅有一辆展车（物理已停用）")
-	_note(showroom.stage.get_node_or_null("Backdrop/Wall") != null, "环形背景幕布已生成")
+	_note(showroom.stage.get_node_or_null("Backdrop/Wall") != null, "工业车库背景墙已生成")
 	var bar: HBoxContainer = showroom.get_node("UI/Root/BottomBar")
 	_note(bar.get_children().size() == Settings.car.data.size(), "底部按钮数 = Car 表车辆数")
 	_note(_pressed_id() == 601, "当前 601 对应按钮为按下态")

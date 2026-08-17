@@ -61,18 +61,22 @@ for mi, m in enumerate(g.get('meshes', [])):
 - `brake_light`：刹车灯，**逗号分隔多个材质名**（尾灯 + 高位刹车灯各一个，如 602 的
   `"材质.009, 材质.010"`）；运行时复制材质、常亮红光 0.4、刹车升至 3.0
 
-**material_presets（引擎效果替换）**，槽位 paint / headlight_lens / glass，每条绑定键二选一：
+**material_presets（引擎效果替换）**，槽位 paint / piano_black / headlight_lens / glass，每条绑定键二选一：
 
 | 键 | 匹配方式 | 用途 |
 | --- | --- | --- |
 | `material` | GLB 材质名，精确→子串（大小写不敏感），可逗号分隔多个 | 常规：材质已命名 |
 | `node` | 节点名（同匹配规则），绑该网格全部表面 | 整块网格无材质/未命名（如 602 风窗「车玻璃」） |
 
-推荐参数：paint 用美术 baseColor 取色 + 深色 glancing；headlight_lens
-`color #141414, alpha 0.1`（透明塑料感）；glass `color #05060a, alpha 1`。
+推荐参数：paint 用美术 baseColor 取色（glancing 已不消费，默认值即可）；车身黑色部件
+（底座/饰条等）绑 piano_black 钢琴烤漆；headlight_lens
+`color #141414, alpha 0.1`（透明塑料感）；glass `color #05060a`（引擎强制完全不透明）。
 
 物理字段 `body_width / front_axle / rear_axle` 用 art_editor 网页编辑器标定
-（`python tools/art_editor/server.py` → localhost:8138）。
+（`python tools/art_editor/server.py` → localhost:8138）。**axle y 语义是「标定即
+静态位」**：静止时轮心在车身局部空间恰落在标定值（vehicle.gd initialize() 自动
+补偿悬挂静态下垂，标多少游戏里就是多少）；车身静态离地 = 胎半径 − 轴 y，换胎后
+要复核轴 y。
 
 ### 4. 配表默认轮毂（可选）
 
@@ -139,4 +143,7 @@ wheel_assembly_check 三项 PASS。
 5. **风窗等无材质网格渲染成白块**：用 material_presets 的 `node` 键绑。
 6. 交付 GLB 材质可能带怪值（KHR specularColorFactor 2.0 等）——被 preset/固定材质
    override 替换的表面无影响，未替换表面留意。
-7. 场景型测试脚本（依赖 Match 等 autoload）必须按场景跑，`-s` 会编译报错。
+7. 场景型测试脚本（依赖 Match 等 autoload）必须按场景跑，`-s` 会编译报错；
+   且 `-s` 的 `_init` 里 add_child 的 `_ready` 延迟到首帧，断言要放 `_process` 首帧。
+8. 编辑器「保存」会重建 body.json 的 material_presets 条目：material/node/params
+   都会回传（node 键回传是后补的，旧版本保存过会丢——发现绑定失效先查这个）。

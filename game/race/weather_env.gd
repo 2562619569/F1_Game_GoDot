@@ -21,7 +21,7 @@ const DATA := {
 		"sun": Color(1.0, 0.97, 0.88), "energy": 1.3, "pitch": -52.0, "yaw": -35.0,
 		"fog": Color(0.75, 0.86, 0.96), "fog_density": 0.0035,
 		"ambient": Color(0.6, 0.7, 0.85), "ambient_energy": 1.0,
-		"glow": true, "glow_intensity": 0.2,
+		"glow": true, "glow_intensity": 0.5,
 		"road": 1.0, "dirt": 1.0, "wet": false,
 		"grass": Color(0.30, 0.55, 0.28), "road_c": Color(0.22, 0.23, 0.26), "dirt_c": Color(0.52, 0.40, 0.26),
 		"advice": "Clear skies. Go full top speed build.",
@@ -33,7 +33,7 @@ const DATA := {
 		"sun": Color(1.0, 0.85, 0.60), "energy": 1.0, "pitch": -58.0, "yaw": -50.0,
 		"fog": Color(0.84, 0.72, 0.52), "fog_density": 0.012,
 		"ambient": Color(0.8, 0.68, 0.5), "ambient_energy": 1.1,
-		"glow": true, "glow_intensity": 0.1,
+		"glow": true, "glow_intensity": 0.3,
 		"road": 0.95, "dirt": 1.05, "wet": false,
 		"grass": Color(0.62, 0.52, 0.28), "road_c": Color(0.38, 0.33, 0.26), "dirt_c": Color(0.68, 0.52, 0.28),
 		"advice": "Gravel canyon ahead. Rally tires + reinforced suspension.",
@@ -45,7 +45,7 @@ const DATA := {
 		"sun": Color(0.62, 0.68, 0.85), "energy": 0.75, "pitch": -60.0, "yaw": 20.0,
 		"fog": Color(0.32, 0.38, 0.48), "fog_density": 0.005,
 		"ambient": Color(0.4, 0.45, 0.58), "ambient_energy": 1.2,
-		"glow": true, "glow_intensity": 0.08,
+		"glow": true, "glow_intensity": 0.45,
 		"road": 0.76, "dirt": 0.88, "wet": true,
 		"grass": Color(0.22, 0.38, 0.22), "road_c": Color(0.16, 0.17, 0.20), "dirt_c": Color(0.38, 0.31, 0.21),
 		"advice": "Soaked tarmac. Rain tires + high-downforce wing.",
@@ -57,7 +57,7 @@ const DATA := {
 		"sun": Color(0.90, 0.95, 1.0), "energy": 1.05, "pitch": -48.0, "yaw": -35.0,
 		"fog": Color(0.86, 0.90, 0.98), "fog_density": 0.004,
 		"ambient": Color(0.85, 0.88, 0.94), "ambient_energy": 1.1,
-		"glow": true, "glow_intensity": 0.12,
+		"glow": true, "glow_intensity": 0.4,
 		"road": 0.66, "dirt": 0.60, "wet": true,
 		"grass": Color(0.88, 0.92, 0.98), "road_c": Color(0.55, 0.58, 0.64), "dirt_c": Color(0.72, 0.76, 0.84),
 		"advice": "Packed ice. Grip is everything: all-terrain or rain tires.",
@@ -154,6 +154,9 @@ static func make_env_cfg(c: Dictionary) -> Environment:
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = bool(c.glow)
 	env.glow_intensity = c.glow_intensity
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE   # 加色混合：刹车灯/灯罩泛光远看醒目
+	env.glow_hdr_threshold = 1.0                                 # 只让 HDR 超亮像素(自发光件/太阳)泛光
+	env.glow_bloom = 0.1                                         # 软化阈值拐点，光晕边缘过渡自然
 	env.fog_enabled = true
 	env.fog_light_color = c.fog
 	env.fog_density = c.fog_density

@@ -9,6 +9,11 @@
   - 轮毂 / 刹车盘：枢纽 = 安装位（两者用同一安装坐标即正确相对位置）；
   - 轮胎：枢纽 = 轮心（轮心即轮宽中面），另测 radius/width 物理量写入 json。
 
+注意：枢纽重锚只保证「原点=安装位」，各部件枢纽在源包内可能同点也可能异位，
+几何也不以枢纽对称（轮毂盘面深浅不一）——轮毂另测 outer/mid_x 写入 json：
+  - outer = 原点→外盘面距离（+X 为外侧），装配用它定轮位（外盘面齐车身边线）；
+  - mid_x = 原点→桶身几何中线 x 偏移，装配用它套胎（胎中线对齐轮毂桶身中线）。
+
 落位规则（沿用占位资产的目录约定，model id 不变则配表无需改动）：
   - art/wheels/<model>/hub.glb  + hub.json   （覆盖占位，json 保留 id/name）
   - art/tires/<model>/tire.glb  + tire.json  （覆盖占位，radius/width 用实测值）
@@ -461,9 +466,15 @@ def main():
             glb, jsn = os.path.join(d, "hub.glb"), os.path.join(d, "hub.json")
             blob = w.build()
             old = replace_glb(glb, blob)
-            meta = update_json(jsn, {"center": [0.0, 0.0, 0.0]})
-            print("  wheels/%s/hub.glb %dB（替换 %s）+ hub.json center=0 id=%s name=%s"
-                  % (model, len(blob), old or "无", meta["id"], meta.get("name", "")))
+            # outer/mid_x：装配定位基准（part 空间 +X 为外侧）——
+            # 轮位 = 车身边线 − outer（外盘面齐边）；套胎偏移 = mid_x（胎中线对齐轮毂桶身中线）
+            outer = round(stats["max"][0], 4)
+            mid_x = round((stats["min"][0] + stats["max"][0]) / 2, 4)
+            meta = update_json(jsn, {"center": [0.0, 0.0, 0.0], "outer": outer, "mid_x": mid_x,
+                                     "radius": round(stats["r_max"], 4),
+                                     "width": round(stats["max"][0] - stats["min"][0], 4)})
+            print("  wheels/%s/hub.glb %dB（替换 %s）+ hub.json outer=%.4f mid_x=%.4f id=%s name=%s"
+                  % (model, len(blob), old or "无", outer, mid_x, meta["id"], meta.get("name", "")))
         elif kind == "tire":
             d = os.path.join(ROOT, "tires", model)
             glb, jsn = os.path.join(d, "tire.glb"), os.path.join(d, "tire.json")

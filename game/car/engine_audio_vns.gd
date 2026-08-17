@@ -101,9 +101,11 @@ enum _ShiftFade { IDLE, FADE_IN, SUSTAIN, FADE_OUT }
 @export var shift_burble_max_duration := 0.35
 @export var shift_burble_base_pitch := 1.0
 @export var shift_burble_pitch_variation := 0.06
-## 换挡瞬间的音高回落量（VNS 由集成方写 shiftPitchOsc，此处自动等效）再按 decay 回零
-@export var shift_pitch_dip := -0.15
-@export var shift_pitch_decay := 0.6
+## 换挡瞬间的音高回落量（VNS 由集成方写 shiftPitchOsc，此处自动等效）再按 decay 回零。
+## 物理侧已让转速在换挡窗口内真实下坠，这里只做接合瞬间的短促咬合：
+## 量要小、衰减要快，避免回抬过程抵消听感上的转速下滑
+@export var shift_pitch_dip := -0.08
+@export var shift_pitch_decay := 1.6
 ## 换挡瞬间引擎层压低（模拟换挡断油），覆盖层结束后快速恢复
 @export var shift_duck := 0.4
 

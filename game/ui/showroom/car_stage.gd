@@ -1,6 +1,6 @@
 class_name CarStage
 extends Node3D
-## 通用 3D 车辆展台（摄影棚布光 + 环形幕布 + 中央转台）：
+## 通用 3D 车辆展台（工业车库布景 + 电影化棚灯）：
 ## 从 showroom 抽出的可复用组件，选车界面 / 局间整备 / 展示间共享同一套视觉。
 ## 场景结构（环境/地面/展台/相机）在 tscn 内搭建，脚本负责补齐资源与装配展车。
 ## 对外契约：car_shown(car_id) 信号 + show_car(car_id) / refresh_car() / car_ids() / current_car_id。
@@ -15,29 +15,9 @@ enum Framing { CENTER, LEFT }
 @export var focus_shift_m := 2.6            # LEFT 构图：视点沿相机右方向平移的米数
 
 const CAR_SCENE := preload("res://addons/gevp/scenes/arcade_car.tscn")
-const FOCUS := Vector3(0, 0.5, 0)           # 展车中心，所有棚灯/相机对准这里
-
-## 摄影棚弧形幕布：暗灰哑光底色 + 以世界坐标 (‑7.8, 2.3, ‑7.8)（相机正对的车后墙面）
-## 为中心的一枚柔光晕，代替纯黑虚空，给车身剪影一个有层次的背景
-const BackdropShader := """
-shader_type spatial;
-render_mode cull_disabled;
-uniform vec3 halo_center = vec3(-7.8, 2.3, -7.8);
-uniform vec3 base_col = vec3(0.075, 0.080, 0.090);
-uniform vec3 halo_col = vec3(0.200, 0.210, 0.230);
-uniform float halo_radius = 9.0;
-varying vec3 world_pos;
-void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-void fragment() {
-	float t = 1.0 - smoothstep(0.0, halo_radius, distance(world_pos, halo_center));
-	t = pow(t, 1.4);
-	ALBEDO = base_col;
-	EMISSION = halo_col * t;
-	ROUGHNESS = 0.9;
-}
-"""
+const FOCUS := Vector3(0, 0.65, 0)          # 展车中心，所有棚灯/相机对准这里
+const GARAGE_YAW := 45.0                    # 后墙正对位于 (+X,+Z) 象限的相机
+const DISPLAY_FLOOR_Y := 0.035
 
 @onready var world_env: WorldEnvironment = $WorldEnvironment
 @onready var sun: DirectionalLight3D = $Sun
@@ -127,19 +107,19 @@ func _make_static_display(v: Vehicle) -> void:
 	for w in v.wheel_array:
 		var resting := v.front_resting_ratio if v.front_axle.wheels.has(w) else v.rear_resting_ratio
 		w.spring_current_length = w.spring_length * resting
-	# 落座高度：台面 y=0.3 + 让较低的前/后轴轮胎底面正好贴台
+	# 落座高度：让较低的前/后轴轮胎底面贴住混凝土地坪。
 	var front_bottom := v.front_left_wheel.position.y \
 			- v.front_spring_length * v.front_resting_ratio - v.front_tire_radius
 	var rear_bottom := v.rear_left_wheel.position.y \
 			- v.rear_spring_length * v.rear_resting_ratio - v.rear_tire_radius
-	v.position = Vector3(0, 0.3 - maxf(front_bottom, rear_bottom), 0)
+	v.position = Vector3(0, DISPLAY_FLOOR_Y - maxf(front_bottom, rear_bottom), 0)
 
 # ---------------- 相机构图 ----------------
 
 ## 收窄视野出产品摄影感；LEFT 构图先把相机对中取得右方向，再把视点右移，
 ## 车辆随之落到画面左三分之一（右侧整块留给悬浮 UI）
 func _apply_framing() -> void:
-	camera.fov = 55.0
+	camera.fov = 49.0
 	camera.look_at(FOCUS)
 	if framing == Framing.LEFT:
 		var right := camera.global_transform.basis.x
@@ -151,47 +131,70 @@ func _setup_world() -> void:
 	if world_env.environment == null:
 		var env := Environment.new()
 		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.02, 0.022, 0.027)   # 幕墙外的兜底色，接近墙基色
+		env.background_color = Color(0.006, 0.007, 0.008)
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = Color(0.10, 0.12, 0.17)   # 冷调极弱环境补光，保住暗部细节
-		env.ambient_light_energy = 0.35
+		env.ambient_light_color = Color(0.18, 0.19, 0.20)   # 中性弱补光，只保住暗部材质
+		env.ambient_light_energy = 0.56
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
-		env.glow_enabled = true                           # 刹车灯/展台发光环加色辉光
-		env.glow_intensity = 0.6
+		env.tonemap_exposure = 1.42
+		env.glow_enabled = true
+		env.glow_intensity = 0.22
 		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
-		env.glow_hdr_threshold = 1.0
-		env.glow_bloom = 0.1
-		env.ssao_enabled = true                           # 车轮/展台接地暗影
-		env.ssao_intensity = 2.0
-		env.ssao_radius = 0.8
-		env.ssr_enabled = true                            # 抛光地板反射车身
-		env.ssr_fade_in = 0.15
-		env.ssr_fade_out = 2.0
-		env.fog_enabled = true                            # 淡雾柔化墙地接缝与纵深
-		env.fog_light_color = Color(0.03, 0.034, 0.04)
-		env.fog_density = 0.015
+		env.glow_hdr_threshold = 1.25
+		env.glow_bloom = 0.03
+		env.ssao_enabled = true
+		env.ssao_intensity = 3.2
+		env.ssao_radius = 1.4
+		env.ssil_enabled = true
+		env.ssil_intensity = 0.7
+		env.ssr_enabled = true
+		env.ssr_fade_in = 0.2
+		env.ssr_fade_out = 1.5
+		env.fog_enabled = true
+		env.fog_light_color = Color(0.025, 0.026, 0.027)
+		env.fog_density = 0.006
+		# Low-density volumetric haze catches the practical lights without veiling the car.
+		env.volumetric_fog_enabled = true
+		env.volumetric_fog_density = 0.009
+		env.volumetric_fog_albedo = Color(0.30, 0.31, 0.32)
+		env.volumetric_fog_emission = Color(0.008, 0.007, 0.006)
+		env.volumetric_fog_emission_energy = 0.35
+		env.volumetric_fog_length = 18.0
+		env.volumetric_fog_detail_spread = 2.5
+		env.adjustment_enabled = true
+		env.adjustment_brightness = 1.02
+		env.adjustment_contrast = 1.08
+		env.adjustment_saturation = 0.94
 		world_env.environment = env
 	if ground.mesh == null:
 		var plane := PlaneMesh.new()
 		plane.size = Vector2(24, 24)
 		ground.mesh = plane
 		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.02, 0.021, 0.026)     # 黑色抛光棚地，靠反射和光池塑形
-		mat.roughness = 0.05
-		mat.metallic = 0.8
+		mat.albedo_color = Color(0.13, 0.13, 0.125)      # 深灰旧混凝土，不抢车漆高光
+		mat.roughness = 0.84
+		mat.metallic = 0.0
 		ground.material_override = mat
 	_setup_lights()
-	_setup_softboxes()
 	_setup_reflection_probe()
 	_setup_ground_collision()
 	_setup_platform()
 	_setup_backdrop()
+	_setup_floor_details()
+	_setup_camera_post()
+	_setup_haze()
 
-## 布光：车辆摄影棚灯组 —— Key 主灯（暖白柔光、唯一投影源）打亮车头车身，
-## Fill 补灯（冷色弱光、无影）抬暗部，RimL/RimR 轮廓灯（背后两侧、窄光束）
-## 勾出车侧剪影边缘，Top 顶灯给车顶一条高光。环境光压得很低，明暗对比靠灯组。
-## 射灯刻意收着（能量低、锥角宽）：硬热点交给漆面反射会炸成光斑，
-## 车身的高光线条由 _setup_softboxes 的长条柔光箱提供。
+## Focus stays on the display car; only the distant wall and props receive a mild blur.
+func _setup_camera_post() -> void:
+	var attributes := CameraAttributesPractical.new()
+	attributes.dof_blur_far_enabled = true
+	attributes.dof_blur_far_distance = 8.2
+	attributes.dof_blur_far_transition = 4.8
+	attributes.dof_blur_amount = 0.04
+	world_env.camera_attributes = attributes
+
+## 主光模拟车库高窗射入的暖白光，窄顶灯拉车顶高光；冷色弱补光仅托住背光面。
+## 只有主光和顶灯投影，让车辆、轮胎和周边道具形成清晰接地关系。
 func _setup_lights() -> void:
 	sun.visible = false                                 # 展厅不用日光，全部走棚灯
 	if get_node_or_null("StudioLights") != null:
@@ -199,54 +202,29 @@ func _setup_lights() -> void:
 	var rig := Node3D.new()
 	rig.name = "StudioLights"
 	add_child(rig)
-	var key := _make_studio_spot("Key", Vector3(-5.0, 5.5, 5.0), Color(1.0, 0.97, 0.9), 4.5, 55.0, 20.0)
+	var key := _make_studio_spot("Key", Vector3(-3.8, 7.2, 5.8), Color(1.0, 0.97, 0.91), 6.8, 52.0, 22.0)
 	key.shadow_enabled = true
-	key.shadow_blur = 4.0                               # 柔光箱式的软阴影
+	key.shadow_blur = 2.2
 	rig.add_child(key)
-	rig.add_child(_make_studio_spot("Fill", Vector3(5.5, 3.0, 5.5), Color(0.72, 0.8, 1.0), 3.0, 65.0, 18.0))
-	rig.add_child(_make_studio_spot("RimL", Vector3(-5.5, 3.5, -5.0), Color(0.8, 0.9, 1.0), 6.0, 32.0, 18.0))
-	rig.add_child(_make_studio_spot("RimR", Vector3(5.5, 3.5, -5.0), Color(1.0, 0.93, 0.85), 6.0, 32.0, 18.0))
-	rig.add_child(_make_studio_spot("Top", Vector3(0, 7.0, 0.6), Color(1.0, 1.0, 1.0), 2.5, 75.0, 16.0))
+	rig.add_child(_make_studio_spot("Fill", Vector3(6.5, 3.0, 4.5), Color(0.72, 0.79, 0.86), 4.6, 72.0, 18.0))
+	rig.add_child(_make_studio_spot("WarmRim", Vector3(-4.5, 4.0, -4.0), Color(1.0, 0.70, 0.44), 2.8, 38.0, 16.0))
+	var top := _make_studio_spot("Top", Vector3(-1.8, 7.5, -1.2), Color(1.0, 0.96, 0.88), 2.2, 54.0, 14.0)
+	top.shadow_enabled = true
+	top.shadow_blur = 3.5
+	rig.add_child(top)
+	rig.add_child(_make_studio_spot("WallWash", Vector3(2.5, 4.8, -1.0), Color(0.76, 0.76, 0.72), 7.5, 68.0, 15.0, Vector3(-4.5, 2.5, -4.5)))
+	rig.add_child(_make_studio_spot("FloorPool", Vector3(5.5, 7.0, 1.0), Color(0.78, 0.82, 0.84), 2.8, 42.0, 18.0, Vector3(1.5, 0.0, -0.8)))
 
-func _make_studio_spot(spot_name: String, pos: Vector3, color: Color, energy: float, angle_deg: float, range_m: float) -> SpotLight3D:
+func _make_studio_spot(spot_name: String, pos: Vector3, color: Color, energy: float, angle_deg: float, range_m: float, target := FOCUS) -> SpotLight3D:
 	var s := SpotLight3D.new()
 	s.name = spot_name
-	s.look_at_from_position(pos, FOCUS)                  # 未入树节点要用 look_at_from_position；一律指向展车中心
+	s.look_at_from_position(pos, target)
 	s.light_color = color
 	s.light_energy = energy
 	s.spot_angle = angle_deg
 	s.spot_range = range_m
-	s.spot_angle_attenuation = 2.0                       # 光束边缘柔和衰减
+	s.spot_angle_attenuation = 1.8
 	return s
-
-## 顶部长条柔光箱：大面发光板不直接出光（无 GI），而是进反射探针与漆面反射——
-## 金属清漆沿车身拉出连续的高光光带（汽车棚拍质感的核心来源），同时给朝前偏下的
-## 面板（前保险杠等）提供可反射的亮面，消除「同材质面板整块发暗」的色差。
-## 板背面对相机方向剔除不可见，画面里只见漆面上的反射不见白板本体。
-func _setup_softboxes() -> void:
-	if get_node_or_null("Softboxes") != null:
-		return
-	var rig := Node3D.new()
-	rig.name = "Softboxes"
-	add_child(rig)
-	var along := Vector3(0.707, 0.0, 0.707)               # 车头朝向（展车 yaw 225°）
-	var side_v := Vector3(-along.z, 0.0, along.x)         # 车身横向
-	for side in [-1.0, 1.0]:
-		var holder := Node3D.new()
-		var pos: Vector3 = side_v * side * 1.8 + Vector3(0, 5.0, 0)
-		holder.look_at_from_position(pos, FOCUS)                # -Z 指向展车；up=Y 时长度边自动沿车身
-		var bar := MeshInstance3D.new()
-		var plane := PlaneMesh.new()
-		plane.size = Vector2(7.0, 1.3)                   # 7m 沿车身、1.3m 横向的长条发光面
-		bar.mesh = plane
-		bar.rotation_degrees.x = -90.0                   # PlaneMesh +Y 法线转到 -Z，正对展车
-		var mat := StandardMaterial3D.new()
-		mat.emission_enabled = true
-		mat.emission = Color(1.0, 0.98, 0.94)
-		mat.emission_energy_multiplier = 3.5
-		bar.material_override = mat
-		holder.add_child(bar)
-		rig.add_child(holder)
 
 ## 反射探针：金属漆/玻璃/抛光地板获得真实环境反射（静态展厅烘焙一次够用）
 func _setup_reflection_probe() -> void:
@@ -255,8 +233,8 @@ func _setup_reflection_probe() -> void:
 	var probe := ReflectionProbe.new()
 	probe.name = "ReflectionProbe"
 	probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	probe.size = Vector3(24, 10, 24)
-	probe.position = Vector3(0, 4, 0)
+	probe.size = Vector3(20, 9, 20)
+	probe.position = Vector3(0, 3.5, 0)
 	probe.box_projection = true
 	add_child(probe)
 
@@ -271,67 +249,185 @@ func _setup_ground_collision() -> void:
 	body.add_child(shape)
 	ground.add_child(body)
 
-## 中央展台：带碰撞的矮圆柱（深色石墨低粗糙度），车直接落到台面上；侧缘一圈发光环
+## 保留 Turntable 容器以兼容宿主场景；车辆直接停在车库地面，不再使用发光圆台。
 func _setup_platform() -> void:
-	var turntable := $Turntable
-	if turntable.get_child_count() > 0:
-		return
-	var body := StaticBody3D.new()
-	var mesh := MeshInstance3D.new()
-	var cylinder := CylinderMesh.new()
-	cylinder.top_radius = 3.0
-	cylinder.bottom_radius = 3.0
-	cylinder.height = 0.3
-	mesh.mesh = cylinder
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.05, 0.052, 0.06)        # 石墨展台，暗棚里靠灯光勾形
-	mat.roughness = 0.12
-	mat.metallic = 0.4
-	mesh.material_override = mat
-	var ring := MeshInstance3D.new()
-	ring.name = "GlowRing"
-	var torus := TorusMesh.new()
-	torus.inner_radius = 3.05
-	torus.outer_radius = 3.13
-	ring.mesh = torus
-	var rmat := StandardMaterial3D.new()
-	rmat.albedo_color = Color(1, 1, 1)
-	rmat.emission_enabled = true
-	rmat.emission = Color(1, 0.98, 0.94)
-	rmat.emission_energy_multiplier = 2.0
-	ring.material_override = rmat
-	ring.position = Vector3(0, -0.16, 0)  # 贴地环绕展台侧缘
-	var shape := CollisionShape3D.new()
-	shape.shape = CylinderShape3D.new()
-	shape.shape.radius = 3.0
-	shape.shape.height = 0.3
-	body.add_child(mesh)
-	body.add_child(ring)
-	body.add_child(shape)
-	body.position = Vector3(0, 0.15, 0)  # 台面在 y=0.3
-	turntable.add_child(body)
+	pass
 
-## 环形背景幕布（cyc 墙）：直径 22m 的开口圆柱围住全场，墙基贴合地面。
-## 墙面自身近黑哑光，唯一读得出来的层次是车后那枚烘焙进 shader 的柔光晕，
-## 棚灯余光扫过时墙面另有极弱的受光渐变，地板 SSR 会把光晕映回地面。
+## 工业车库后墙：深色波纹钢板、立柱、桁架和顶灯。道具全部放在车辆后方，
+## 既形成参考图里的工作间纵深，又不会遮挡展车和底部操作区域。
 func _setup_backdrop() -> void:
 	if get_node_or_null("Backdrop") != null:
 		return
 	var backdrop := Node3D.new()
 	backdrop.name = "Backdrop"
 	add_child(backdrop)
-	var wall := MeshInstance3D.new()
-	wall.name = "Wall"
-	var cylinder := CylinderMesh.new()
-	cylinder.top_radius = 11.0
-	cylinder.bottom_radius = 11.0
-	cylinder.height = 8.0
-	cylinder.radial_segments = 64
-	wall.mesh = cylinder
-	wall.position = Vector3(0, 4.0, 0)
-	var mat := ShaderMaterial.new()
-	var shader := Shader.new()
-	shader.code = BackdropShader
-	mat.shader = shader
-	wall.material_override = mat
-	backdrop.add_child(wall)
+	backdrop.rotation_degrees.y = GARAGE_YAW
+	backdrop.position = Vector3(-4.8, 0.0, -4.8)
+	var wall := _box(backdrop, "Wall", Vector3(0, 3.0, 0), Vector3(17.0, 6.0, 0.24), Color(0.085, 0.083, 0.077), 0.88)
+	var wall_mat := wall.material_override as StandardMaterial3D
+	wall_mat.emission_enabled = true
+	wall_mat.emission = Color(0.018, 0.018, 0.016)
+	wall_mat.emission_energy_multiplier = 1.0
+	# Corrugated ribs make the wall readable without a texture asset.
+	for x in range(-32, 33):
+		_box(backdrop, "Rib", Vector3(x * 0.25, 3.0, 0.15), Vector3(0.035, 5.7, 0.06), Color(0.13, 0.128, 0.118), 0.72, 0.15)
+	for x in [-7.2, -3.6, 0.0, 3.6, 7.2]:
+		_box(backdrop, "Column", Vector3(x, 3.05, 0.48), Vector3(0.20, 6.1, 0.22), Color(0.035, 0.034, 0.031), 0.55, 0.65)
+		_box(backdrop, "Brace", Vector3(x + 0.85, 3.5, 0.53), Vector3(2.0, 0.10, 0.10), Color(0.03, 0.029, 0.027), 0.6, 0.6, Vector3(0, 0, 38))
+		_box(backdrop, "Brace", Vector3(x + 0.85, 2.1, 0.53), Vector3(2.0, 0.10, 0.10), Color(0.03, 0.029, 0.027), 0.6, 0.6, Vector3(0, 0, -38))
+	_box(backdrop, "TopBeam", Vector3(0, 5.65, 1.9), Vector3(17.0, 0.22, 0.28), Color(0.025, 0.024, 0.022), 0.55, 0.7)
+	for x in [-5.5, -1.8, 1.8, 5.5]:
+		_box(backdrop, "CeilingBeam", Vector3(x, 5.45, 3.8), Vector3(0.18, 0.20, 7.6), Color(0.025, 0.024, 0.022), 0.6, 0.7)
+	_setup_garage_props(backdrop)
+
+func _setup_garage_props(backdrop: Node3D) -> void:
+	var metal := Color(0.07, 0.07, 0.065)
+	# Left tire rack and stacked tires.
+	for x in [-6.0, -3.7]:
+		_box(backdrop, "RackPost", Vector3(x, 1.6, 0.85), Vector3(0.12, 3.2, 0.12), metal, 0.55, 0.7)
+	for y in [0.45, 1.45, 2.45]:
+		_box(backdrop, "RackShelf", Vector3(-4.85, y, 0.85), Vector3(2.5, 0.10, 0.75), metal, 0.6, 0.65)
+		for x in [-5.65, -5.05, -4.45, -3.85]:
+			_tire(backdrop, Vector3(x, y + 0.34, 0.86), 0.36)
+	# Right workbench, cupboards and warm wooden crates.
+	_box(backdrop, "BenchTop", Vector3(4.7, 1.0, 1.15), Vector3(4.4, 0.18, 1.15), Color(0.19, 0.095, 0.045), 0.72)
+	for x in [2.8, 4.7, 6.6]:
+		_box(backdrop, "BenchLeg", Vector3(x, 0.48, 1.15), Vector3(0.14, 0.95, 0.14), metal, 0.55, 0.7)
+	for item in [Vector3(3.0, 1.42, 0.85), Vector3(4.1, 1.28, 1.1), Vector3(5.7, 1.45, 0.9)]:
+		_box(backdrop, "Crate", item, Vector3(0.85, 0.65, 0.7), Color(0.22, 0.105, 0.045), 0.82)
+	# Wall shelves and boxes break up the large dark background.
+	for y in [2.2, 3.35, 4.5]:
+		_box(backdrop, "WallShelf", Vector3(5.2, y, 0.62), Vector3(3.6, 0.10, 0.55), metal, 0.58, 0.7)
+	for p in [Vector3(4.1, 2.58, 0.63), Vector3(5.15, 2.62, 0.63), Vector3(6.0, 3.72, 0.63), Vector3(4.55, 4.87, 0.63)]:
+		_box(backdrop, "StorageBox", p, Vector3(0.75, 0.62, 0.5), Color(0.11, 0.12, 0.115), 0.8)
+	# Three practical ceiling strips are visible reflections and motivate the top light.
+	for x in [-3.6, 0.0, 3.6]:
+		var fixture := _box(backdrop, "Practical", Vector3(x, 5.25, 2.0), Vector3(2.0, 0.08, 0.30), Color(0.9, 0.73, 0.48), 0.35)
+		var mat := fixture.material_override as StandardMaterial3D
+		mat.emission_enabled = true
+		mat.emission = Color(0.92, 0.90, 0.84)
+		mat.emission_energy_multiplier = 0.08 if is_zero_approx(x) else 0.45
+	for p in [Vector3(-3.6, 4.85, 1.8), Vector3(3.6, 4.85, 1.8)]:
+		var practical_light := OmniLight3D.new()
+		practical_light.name = "PracticalGlow"
+		practical_light.position = p
+		practical_light.light_color = Color(1.0, 0.72, 0.42)
+		practical_light.light_energy = 0.55
+		practical_light.omni_range = 4.5
+		practical_light.omni_attenuation = 1.7
+		backdrop.add_child(practical_light)
+
+## Sparse, slow smoke stays behind the car and gives the light pools a little movement.
+func _setup_haze() -> void:
+	var haze := Node3D.new()
+	haze.name = "AtmosphericHaze"
+	add_child(haze)
+	_add_smoke_emitter(haze, Vector3(-3.8, 0.65, -3.6), Vector3(2.2, 0.65, 1.7), 10)
+	_add_smoke_emitter(haze, Vector3(3.0, 0.85, -4.2), Vector3(1.8, 0.8, 1.4), 7)
+
+func _add_smoke_emitter(parent: Node3D, pos: Vector3, extents: Vector3, particle_count: int) -> void:
+	var particles := GPUParticles3D.new()
+	particles.name = "Smoke"
+	particles.position = pos
+	particles.amount = particle_count
+	particles.lifetime = 12.0
+	particles.randomness = 0.65
+	particles.preprocess = 12.0
+	particles.fixed_fps = 20
+	particles.visibility_aabb = AABB(-extents * 2.5, extents * 5.0)
+
+	var process := ParticleProcessMaterial.new()
+	process.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	process.emission_box_extents = extents
+	process.direction = Vector3(0.12, 1.0, -0.08)
+	process.spread = 38.0
+	process.gravity = Vector3(0, 0.025, 0)
+	process.initial_velocity_min = 0.035
+	process.initial_velocity_max = 0.11
+	process.scale_min = 0.75
+	process.scale_max = 2.1
+	var life_gradient := Gradient.new()
+	life_gradient.offsets = PackedFloat32Array([0.0, 0.15, 0.7, 1.0])
+	life_gradient.colors = PackedColorArray([
+		Color(0.30, 0.32, 0.34, 0.0),
+		Color(0.30, 0.32, 0.34, 0.045),
+		Color(0.25, 0.27, 0.29, 0.02),
+		Color(0.22, 0.24, 0.26, 0.0),
+	])
+	var life_ramp := GradientTexture1D.new()
+	life_ramp.gradient = life_gradient
+	process.color_ramp = life_ramp
+	particles.process_material = process
+
+	var radial_gradient := Gradient.new()
+	radial_gradient.offsets = PackedFloat32Array([0.0, 0.42, 1.0])
+	radial_gradient.colors = PackedColorArray([
+		Color(1, 1, 1, 0.24),
+		Color(1, 1, 1, 0.08),
+		Color(1, 1, 1, 0.0),
+	])
+	var smoke_texture := GradientTexture2D.new()
+	smoke_texture.gradient = radial_gradient
+	smoke_texture.width = 64
+	smoke_texture.height = 64
+	smoke_texture.fill = GradientTexture2D.FILL_RADIAL
+	smoke_texture.fill_from = Vector2(0.5, 0.5)
+	smoke_texture.fill_to = Vector2(1.0, 0.5)
+	var smoke_mat := StandardMaterial3D.new()
+	smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	smoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	smoke_mat.billboard_keep_scale = true
+	smoke_mat.vertex_color_use_as_albedo = true
+	smoke_mat.albedo_texture = smoke_texture
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1.35, 1.35)
+	quad.material = smoke_mat
+	particles.draw_pass_1 = quad
+	parent.add_child(particles)
+
+func _setup_floor_details() -> void:
+	var details := Node3D.new()
+	details.name = "FloorDetails"
+	add_child(details)
+	# Concrete expansion joints and faded bay markings.
+	for offset in [-4.0, 0.0, 4.0]:
+		_box(details, "Joint", Vector3(offset, 0.012, 0), Vector3(0.025, 0.018, 18.0), Color(0.025, 0.025, 0.024), 1.0)
+		_box(details, "Joint", Vector3(0, 0.013, offset), Vector3(18.0, 0.018, 0.025), Color(0.025, 0.025, 0.024), 1.0)
+	for offset in [-2.9, 2.9]:
+		_box(details, "BayMark", Vector3(offset, 0.018, -0.3), Vector3(0.09, 0.025, 7.5), Color(0.32, 0.30, 0.23), 0.88)
+	# Broad translucent-looking stains are matte geometry, intentionally very subtle.
+	_box(details, "Stain", Vector3(-2.4, 0.019, 2.7), Vector3(2.8, 0.02, 1.1), Color(0.075, 0.07, 0.06), 1.0, 0.0, Vector3(0, 18, 0))
+	_box(details, "Stain", Vector3(3.2, 0.019, -1.8), Vector3(1.6, 0.02, 2.4), Color(0.065, 0.066, 0.063), 1.0, 0.0, Vector3(0, -22, 0))
+
+func _box(parent: Node, node_name: String, pos: Vector3, size: Vector3, color: Color, roughness := 0.8, metallic := 0.0, rotation_deg := Vector3.ZERO) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	instance.mesh = mesh
+	instance.position = pos
+	instance.rotation_degrees = rotation_deg
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = roughness
+	mat.metallic = metallic
+	instance.material_override = mat
+	parent.add_child(instance)
+	return instance
+
+func _tire(parent: Node, pos: Vector3, radius: float) -> void:
+	var tire := MeshInstance3D.new()
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = radius * 0.55
+	mesh.outer_radius = radius
+	mesh.rings = 16
+	mesh.ring_segments = 12
+	tire.mesh = mesh
+	tire.position = pos
+	tire.rotation_degrees.z = 90.0
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.018, 0.017, 0.015)
+	mat.roughness = 0.95
+	tire.material_override = mat
+	parent.add_child(tire)

@@ -1,11 +1,14 @@
 class_name CarMeshBuilder
 extends RefCounted
 ## 「美术资源 → 车辆视觉」装配入口：
-## 1. 按 art/cars/<id>/body.json 的 body_width + 轮胎 width 齐边推导 4 个轮位，
-##    重定位物理轮挂点并挂载车壳模型（轮位 x = ±(body_width − tire_width/2)）；
-## 2. 每个轮位分别挂载轮毂（art/wheels/<hub_id>/hub.glb，纯外观件）、
-##    轮胎（art/tires/<tire_id>/tire.glb，随轮胎改件换装）与刹车盘
-##    （art/brakes/<brake_id>/disc.glb，前/后轴各一款），各按自己的 center 对齐；
+## 1. 轮位以轮毂为基准定义：hub.json 的 outer（原点→外盘面）齐 body_width 车身边线，
+##    轮位 x = ±(body_width − hub.outer)，重定位物理轮挂点并挂载车壳模型；
+##    无轮毂资产或缺 outer 元数据时退回胎侧齐边（body_width − tire.width/2）；
+## 2. 轮位定了再套轮胎：轮毂原点=安装位直接对齐轮位；轮胎中线对齐轮毂桶身的
+##    几何中线（hub.json 的 mid_x）——轮毂盘面深浅不一（sport/classic/aero 的
+##    外盘面距原点 0.07~0.13 不等），若各件只按自身原点居中，盘面会被埋进胎内
+##    呈内凹错位；刹车盘（art/brakes/<brake_id>/disc.glb，前/后轴各一款）原点
+##    同为安装位，直接对齐；
 ## 3. tire.json 的 radius 在入树前写入 vehicle 的 front/rear_tire_radius，
 ##    由 initialize() 统一下发各物理轮——不能直写 wheel.tire_radius（会被 initialize 覆盖）。
 ## 真实轮件按「外侧朝 +X」建模：左侧轮位统一绕 Y 翻转 180°（轮胎对称无视觉差异，
@@ -99,12 +102,19 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 			if body_meta.get("material_presets") is Dictionary else {}
 	_MaterialPresets.apply(body_visual, presets_meta)
 
-	# 齐边推导用胎宽；胎半径写入 vehicle 导出变量（入树前），由 initialize() 下发各物理轮
+
+	# 齐边推导：优先轮毂外盘面（outer），无轮毂资产或缺元数据时退回胎侧（胎宽/2）；
+	# 胎半径写入 vehicle 导出变量（入树前），由 initialize() 下发各物理轮
 	var tire_width: float = tire.get("width", 0.2)
 	v.front_tire_radius = tire.get("radius", 0.3)
 	v.rear_tire_radius = tire.get("radius", 0.3)
 
-	var half_axle_x := body_width - tire_width * 0.5
+	var hub_outer: float = hub.get("outer", 0.0)
+	if hub.scene == null or hub_outer <= 0.0:
+		hub_outer = tire_width * 0.5
+	var hub_mid: float = hub.get("mid_x", 0.0)
+
+	var half_axle_x := body_width - hub_outer
 	for slot in SLOTS:
 		var names: Array = SLOTS[slot]
 		var ray: Node3D = v.get_node(names[0])
@@ -125,7 +135,11 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 				continue
 			var visual: Node3D = part.scene.instantiate()
 			visual.name = part.node_name
-			visual.position = -part.center
+			var local: Vector3 = -part.center
+			if part == tire:
+				# 套胎：胎中线对齐轮毂桶身几何中线（part 空间 +X 为外侧，随左右翻转）
+				local.x += sign_x * hub_mid
+			visual.position = local
 			visual.rotation.y = side_flip
 			wheel_node.add_child(visual)
 			# 轮件 GLB 交付无贴图，挂上后统一替换为引擎侧固定材质（磨砂黑轮毂/橡胶胎）
@@ -149,11 +163,12 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 			# 盘面固定亮面纯金属，卡钳材质保留 GLB 原样
 			_WheelMaterials.apply_disc(disc)
 	return true
-
 ## 读取 wheels/<id>/hub.json 或 tires/<id>/tire.json 一侧的资产描述：
-## {scene: PackedScene(缺失为 null), center: Vector3, radius: float, width: float}
+## {scene: PackedScene(缺失为 null), center: Vector3, radius: float, width: float,
+##  outer: float(原点→外盘面，仅轮毂), mid_x: float(原点→桶身几何中线，仅轮毂)}
 static func _load_wheel_part(dir: String, asset_id: String, json_name: String, node_name: String) -> Dictionary:
-	var out := {"scene": null, "center": Vector3.ZERO, "radius": 0.3, "width": 0.2, "node_name": node_name}
+	var out := {"scene": null, "center": Vector3.ZERO, "radius": 0.3, "width": 0.2,
+			"outer": 0.0, "mid_x": 0.0, "node_name": node_name}
 	var meta := _load_json("res://art/%s/%s/%s" % [dir, asset_id, json_name])
 	if meta.is_empty():
 		push_warning("CarMeshBuilder: 缺少元数据 art/%s/%s/%s，该侧保留占位" % [dir, asset_id, json_name])
@@ -166,6 +181,8 @@ static func _load_wheel_part(dir: String, asset_id: String, json_name: String, n
 	out.center = _vec3(meta.get("center", [0.0, 0.0, 0.0]))
 	out.radius = float(meta.get("radius", 0.3))
 	out.width = float(meta.get("width", 0.2))
+	out.outer = float(meta.get("outer", 0.0))
+	out.mid_x = float(meta.get("mid_x", 0.0))
 	return out
 
 static func _load_json(path: String) -> Dictionary:

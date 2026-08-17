@@ -17,7 +17,10 @@ func _ready() -> void:
 	env.ambient_light_energy = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.glow_enabled = true
-	env.glow_intensity = 0.2
+	env.glow_intensity = 0.5
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	env.glow_hdr_threshold = 1.0
+	env.glow_bloom = 0.1
 	env.ssao_enabled = true
 	env.ssao_intensity = 1.5
 	env.ssao_radius = 0.8

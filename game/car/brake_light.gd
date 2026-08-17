@@ -8,17 +8,19 @@ extends Node3D
 
 @export_group("发光")
 @export var brake_color := Color(1.0, 0.08, 0.05)
-## 未刹车时的示位灯亮度：常亮可感知的红色自发光（0 = 熄灭）
+## 未刹车时的示位灯亮度：常亮可感知的红色自发光（0 = 熄灭），
+## 保持在环境辉光 HDR 阈值(1.0)以下，示位不泛光
 @export var idle_energy := 0.4
-## 满刹车时的自发光强度
-@export var braking_energy := 3.0
+## 满刹车时的自发光强度：要明显高于辉光阈值，越高于阈值辉光越猛
+@export var braking_energy := 6.0
 
 @export_group("弹簧（响应频率 Hz / 阻尼比）")
 @export var frequency := 10.0
 @export var damping_ratio := 1.0
 
 @export_group("附加点光")
-@export var light_gain := 0.8
+## 辉光后处理负责远看醒目，点光只补近处地面红色反光，随自发光升到 6.0 相应调低增益
+@export var light_gain := 0.4
 
 const _SpringDamper := preload("res://game/car/spring_damper.gd")
 
@@ -33,7 +35,9 @@ var _energy_vel := 0.0
 ## brake_light 材质名支持逗号分隔多个（如「材质.009, 材质.010」= 尾灯 + 高位刹车灯）。
 func setup(v: Vehicle, body_visual: Node, materials_meta: Dictionary) -> void:
 	_vehicle = v
-	var raw := str(materials_meta.get("brake_light", "")).strip_edges()
+	# 编辑器保存会把未标记项写成 null，非字符串按未标记处理
+	var marker: Variant = materials_meta.get("brake_light")
+	var raw := str(marker).strip_edges() if marker is String else ""
 	if raw.is_empty():
 		_detach("body.json 未标记刹车灯材质")
 		return
