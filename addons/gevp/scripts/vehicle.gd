@@ -345,6 +345,11 @@ var handbrake_input := 0.0
 var clutch_input := 0.0
 ################################################################
 
+## 只读别名：Pro Vehicle Camera 的过弯侧倾按 "steering" 属性名读取转向量
+var steering: float:
+	get:
+		return steering_input
+
 var is_ready := false
 var local_velocity := Vector3.ZERO
 var previous_global_position := Vector3.ZERO

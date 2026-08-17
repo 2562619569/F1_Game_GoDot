@@ -102,7 +102,7 @@ func _run() -> void:
 
 	# ---- 8. 局间改装：装上引擎件，属性应提升 ----
 	await get_tree().create_timer(0.3).timeout
-	var garage: Control = main.current_ui
+	var garage: Node3D = main.current_ui
 	ok(garage.backpack_grid.get_child_count() == Match.backpack.size(), "backpack items rendered")
 	var engine_pid := -1
 	for pid in Match.backpack:

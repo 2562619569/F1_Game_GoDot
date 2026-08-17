@@ -7,7 +7,7 @@ extends RefCounted
 const TRACK_SCENE := preload("res://game/race/tracks/track_test.tscn")
 const LOOT_SCENE := preload("res://game/race/loot_pickup.tscn")
 const CAR_SCENE := preload("res://addons/gevp/scenes/arcade_car.tscn")
-const CAMERA_SCRIPT := preload("res://addons/gevp/scripts/camera.gd")
+const CAMERA_SCRIPT := preload("res://game/race/smooth_chase_camera.gd")
 const ENGINE_SOUND := preload("res://addons/gevp/scenes/engine_sound.tscn")
 const PLAYER_SCRIPT := preload("res://game/car/player_car.gd")
 const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
@@ -40,12 +40,13 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	var racers: Array[Racer] = []
 	var player_racer := _spawn_racers(race, track, track_data, racers)
 
-	# --- 相机跟随玩家 ---
+	# --- 相机跟随玩家（Pro Vehicle Camera：弹性牵引+速度FOV+过弯侧倾+look_back，
+	#     smooth_chase_camera 包一层旋转低通以消除键盘阶跃转向的视角跳变） ---
 	var cam := Camera3D.new()
 	cam.set_script(CAMERA_SCRIPT)
 	cam.follow_distance = 6.5
 	cam.follow_height = 2.6
-	cam.speed = 30.0
+	cam.speed = 20.0
 	race.add_child(cam)
 	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
 	cam.follow_this = player_racer.vehicle
