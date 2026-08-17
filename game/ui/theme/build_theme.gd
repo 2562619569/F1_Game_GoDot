@@ -40,6 +40,19 @@ func _initialize() -> void:
 	# ---- PanelContainer 卡片面板 ----
 	t.set_stylebox("panel", "PanelContainer", _panel_box(Palette.BG_PANEL))
 
+	# 悬浮面板变体：叠在 3D 展示场景上的半透明面板（选车/局间整备），
+	# 底色透出棚拍背景，描边带一点青色科技感勾边
+	_variation(t, "Float", "PanelContainer")
+	var float_box := _panel_box(Color(Palette.BG_PANEL, 0.82))
+	float_box.corner_radius_top_left = 14
+	float_box.corner_radius_top_right = 14
+	float_box.corner_radius_bottom_left = 14
+	float_box.corner_radius_bottom_right = 14
+	float_box.border_color = Color(Palette.ACCENT, 0.35)
+	float_box.content_margin_left = 4.0
+	float_box.content_margin_right = 4.0
+	t.set_stylebox("panel", "Float", float_box)
+
 	var err := ResourceSaver.save(t, THEME_PATH)
 	if err != OK:
 		push_error("Theme save failed: %s" % err)

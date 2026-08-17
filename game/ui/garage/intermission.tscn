@@ -2,202 +2,230 @@
 
 [ext_resource type="Script" path="res://game/ui/garage/intermission.gd" id="1_garage"]
 [ext_resource type="Script" path="res://game/ui/garage/radar_chart.gd" id="2_radar"]
-[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="3_backdrop"]
-[ext_resource type="PackedScene" path="res://game/ui/components/panel_card.tscn" id="4_panel"]
+[ext_resource type="PackedScene" path="res://game/ui/showroom/car_stage.tscn" id="3_stage"]
+[ext_resource type="PackedScene" path="res://game/ui/components/panel_float.tscn" id="4_panel_float"]
 [ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="5_btn_primary"]
 
-[node name="Intermission" type="Control"]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="Intermission" type="Node3D"]
 script = ExtResource("1_garage")
 
-[node name="Background" parent="." instance=ExtResource("3_backdrop")]
+[node name="CarStage" parent="." instance=ExtResource("3_stage")]
+framing = 1
 
-[node name="Root" type="VBoxContainer" parent="."]
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 30.0
-offset_top = 20.0
-offset_right = -30.0
-offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 12
+mouse_filter = 2
 
-[node name="Header" type="Label" parent="Root"]
-unique_name_in_owner = true
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 28
-text = "INTERMISSION"
-horizontal_alignment = 1
+[node name="ResultPanel" parent="UI/Root" instance=ExtResource("4_panel_float")]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 580.0
+offset_bottom = 214.0
 
-[node name="Columns" type="HBoxContainer" parent="Root"]
-size_flags_vertical = 3
-theme_override_constants/separation = 16
-
-[node name="ResultPanel" parent="Root/Columns" instance=ExtResource("4_panel")]
-size_flags_horizontal = 3
-
-[node name="Margin" type="MarginContainer" parent="Root/Columns/ResultPanel"]
+[node name="Margin" type="MarginContainer" parent="UI/Root/ResultPanel"]
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 12
 
-[node name="VBox" type="VBoxContainer" parent="Root/Columns/ResultPanel/Margin"]
+[node name="VBox" type="VBoxContainer" parent="UI/Root/ResultPanel/Margin"]
 theme_override_constants/separation = 6
 
-[node name="ResultTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
+[node name="Header" type="Label" parent="UI/Root/ResultPanel/Margin/VBox"]
+unique_name_in_owner = true
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 20
-text = "ROUND RESULT"
+text = "INTERMISSION"
 
-[node name="ResultsGrid" type="GridContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
+[node name="ResultsGrid" type="GridContainer" parent="UI/Root/ResultPanel/Margin/VBox"]
 unique_name_in_owner = true
 columns = 3
 theme_override_constants/h_separation = 14
-theme_override_constants/v_separation = 4
+theme_override_constants/v_separation = 3
 
-[node name="Spacer" type="Control" parent="Root/Columns/ResultPanel/Margin/VBox"]
-custom_minimum_size = Vector2(0, 10)
+[node name="Spacer" type="Control" parent="UI/Root/ResultPanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 8)
 
-[node name="RewardsTitle" type="Label" parent="Root/Columns/ResultPanel/Margin/VBox"]
+[node name="RewardsTitle" type="Label" parent="UI/Root/ResultPanel/Margin/VBox"]
 theme_type_variation = &"Good"
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 text = "RANK REWARDS →"
 
-[node name="RewardsBox" type="VBoxContainer" parent="Root/Columns/ResultPanel/Margin/VBox"]
+[node name="RewardsBox" type="VBoxContainer" parent="UI/Root/ResultPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_override_constants/separation = 2
 
-[node name="GaragePanel" parent="Root/Columns" instance=ExtResource("4_panel")]
-custom_minimum_size = Vector2(420, 0)
-size_flags_horizontal = 3
+[node name="GaragePanel" parent="UI/Root" instance=ExtResource("4_panel_float")]
+layout_mode = 0
+offset_left = 692.0
+offset_top = 16.0
+offset_right = 1132.0
+offset_bottom = 392.0
 
-[node name="Margin" type="MarginContainer" parent="Root/Columns/GaragePanel"]
+[node name="Margin" type="MarginContainer" parent="UI/Root/GaragePanel"]
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 12
 
-[node name="VBox" type="VBoxContainer" parent="Root/Columns/GaragePanel/Margin"]
+[node name="VBox" type="VBoxContainer" parent="UI/Root/GaragePanel/Margin"]
 theme_override_constants/separation = 8
 
-[node name="GarageTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+[node name="GarageTitle" type="Label" parent="UI/Root/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 20
 text = "LOADOUT"
 
-[node name="SlotBox" type="HBoxContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
+[node name="SlotBox" type="GridContainer" parent="UI/Root/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
-theme_override_constants/separation = 8
+columns = 3
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
 
-[node name="BackpackTitle" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+[node name="BackpackTitle" type="Label" parent="UI/Root/GaragePanel/Margin/VBox"]
 theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 text = "BACKPACK (unlimited)"
 
-[node name="BackpackScroll" type="ScrollContainer" parent="Root/Columns/GaragePanel/Margin/VBox"]
-custom_minimum_size = Vector2(0, 180)
+[node name="BackpackScroll" type="ScrollContainer" parent="UI/Root/GaragePanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 140)
 size_flags_vertical = 3
 
-[node name="BackpackGrid" type="GridContainer" parent="Root/Columns/GaragePanel/Margin/VBox/BackpackScroll"]
+[node name="BackpackGrid" type="GridContainer" parent="UI/Root/GaragePanel/Margin/VBox/BackpackScroll"]
 unique_name_in_owner = true
 columns = 3
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 size_flags_horizontal = 3
 
-[node name="HintLabel" type="Label" parent="Root/Columns/GaragePanel/Margin/VBox"]
+[node name="HintLabel" type="Label" parent="UI/Root/GaragePanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 text = "Click a part to equip / unequip. Same category replaces."
 
-[node name="Radar" type="Control" parent="Root/Columns/GaragePanel/Margin/VBox"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(240, 220)
-size_flags_horizontal = 3
-size_flags_vertical = 3
-script = ExtResource("2_radar")
+[node name="NextPanel" parent="UI/Root" instance=ExtResource("4_panel_float")]
+layout_mode = 0
+offset_left = 692.0
+offset_top = 404.0
+offset_right = 1132.0
+offset_bottom = 632.0
 
-[node name="NextPanel" parent="Root/Columns" instance=ExtResource("4_panel")]
-size_flags_horizontal = 3
-
-[node name="Margin" type="MarginContainer" parent="Root/Columns/NextPanel"]
+[node name="Margin" type="MarginContainer" parent="UI/Root/NextPanel"]
 theme_override_constants/margin_left = 16
 theme_override_constants/margin_top = 12
 theme_override_constants/margin_right = 16
 theme_override_constants/margin_bottom = 12
 
-[node name="VBox" type="VBoxContainer" parent="Root/Columns/NextPanel/Margin"]
-theme_override_constants/separation = 8
+[node name="VBox" type="VBoxContainer" parent="UI/Root/NextPanel/Margin"]
+theme_override_constants/separation = 5
 
-[node name="NextTitle" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="NextTitle" type="Label" parent="UI/Root/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "NEXT ROUND"
 
-[node name="MapName" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="MapName" type="Label" parent="UI/Root/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 text = "Lakeside Highway"
 
-[node name="WeatherChip" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="WeatherChip" type="Label" parent="UI/Root/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 text = "[ Sunny ]"
 
-[node name="MapDesc" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="MapDesc" type="Label" parent="UI/Root/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 text = "Long straights under open sky."
 
-[node name="Advice" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="Advice" type="Label" parent="UI/Root/NextPanel/Margin/VBox"]
 unique_name_in_owner = true
 theme_type_variation = &"Good"
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 text = "» Go full top speed build."
 
-[node name="Spacer" type="Control" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="Spacer" type="Control" parent="UI/Root/NextPanel/Margin/VBox"]
 size_flags_vertical = 3
 
-[node name="CountdownLabel" type="Label" parent="Root/Columns/NextPanel/Margin/VBox"]
+[node name="ReadyRow" type="HBoxContainer" parent="UI/Root/NextPanel/Margin/VBox"]
+theme_override_constants/separation = 10
+
+[node name="CountdownLabel" type="Label" parent="UI/Root/NextPanel/Margin/VBox/ReadyRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
 theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 28
 text = "40"
 horizontal_alignment = 1
+vertical_alignment = 1
 
-[node name="ReadyButton" parent="Root/Columns/NextPanel/Margin/VBox" instance=ExtResource("5_btn_primary")]
+[node name="ReadyButton" parent="UI/Root/NextPanel/Margin/VBox/ReadyRow" instance=ExtResource("5_btn_primary")]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 56)
-theme_override_font_sizes/font_size = 18
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 52)
+theme_override_font_sizes/font_size = 16
 text = "READY  ·  START NEXT ROUND"
 
-[node name="ToastLabel" type="Label" parent="."]
+[node name="RadarPanel" parent="UI/Root" instance=ExtResource("4_panel_float")]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 444.0
+offset_right = 236.0
+offset_bottom = 632.0
+
+[node name="Margin" type="MarginContainer" parent="UI/Root/RadarPanel"]
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 8
+
+[node name="Radar" type="Control" parent="UI/Root/RadarPanel/Margin"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(192, 168)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("2_radar")
+
+[node name="DragHint" type="Label" parent="UI/Root"]
+layout_mode = 0
+offset_left = 252.0
+offset_top = 604.0
+offset_right = 580.0
+offset_bottom = 626.0
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 12
+text = "◂ HOLD LEFT MOUSE TO ROTATE YOUR CAR"
+
+[node name="ToastLabel" type="Label" parent="UI/Root"]
+unique_name_in_owner = true
+layout_mode = 0
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -400.0
-offset_top = -170.0
+offset_top = -80.0
 offset_right = 400.0
-offset_bottom = -120.0
+offset_bottom = -40.0
 grow_horizontal = 2
 theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = ""
 horizontal_alignment = 1

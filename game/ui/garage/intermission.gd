@@ -1,6 +1,7 @@
-extends Control
-## 局间整备（战术改车）：三栏框架版式在 tscn 内编辑；
-## 结算表/奖励列表由代码渲染，装配槽位、背包格子、雷达图数据驱动刷新。
+extends Node3D
+## 局间整备（战术改车）：CarStage 3D 展台（车辆居左构图）+ 右侧集中悬浮 UI。
+## 结算表/奖励列表由代码渲染，装配槽位、背包格子、雷达图数据驱动刷新；
+## 换装后调用展台 refresh_car() 让 3D 展车实时跟随外观/属性变化。
 ## 对外契约：start_next_pressed 信号 + ready_btn / backpack_grid / bind() / _refresh()。
 
 signal start_next_pressed
@@ -9,11 +10,12 @@ const CATEGORY_LABELS := {
 	"engine": "ENGINE", "tires": "TIRES", "aero": "AERO", "chassis": "CHASSIS", "tactical": "TACTICAL",
 }
 
+@onready var stage: CarStage = $CarStage
 @onready var header: Label = %Header
 @onready var results_grid: GridContainer = %ResultsGrid
 @onready var rewards_box: VBoxContainer = %RewardsBox
 @onready var garage_title: Label = %GarageTitle
-@onready var slot_box: HBoxContainer = %SlotBox
+@onready var slot_box: GridContainer = %SlotBox
 @onready var backpack_grid: GridContainer = %BackpackGrid
 @onready var hint_label: Label = %HintLabel
 @onready var radar: Control = %Radar
@@ -41,6 +43,7 @@ func _ready() -> void:
 	header.text = "INTERMISSION  ·  ROUND %d / %d FINISHED" % [Match.round_index, Match.round_count()]
 	garage_title.text = "LOADOUT  ·  %d PERF / %d FUNC SLOTS" % [Match.perf_slots(), Match.func_slots()]
 	ready_btn.pressed.connect(func(): start_next_pressed.emit())
+	stage.show_car(Match.car_id)
 	_render_results()
 	_render_next()
 	_refresh()
@@ -96,7 +99,8 @@ func _refresh() -> void:
 		var b := Button.new()
 		var equipped := Match.equipped.has(cat)
 		b.text = "%s\n%s" % [CATEGORY_LABELS[cat], Match.part_cfg(Match.equipped[cat]).name if equipped else "— empty —"]
-		b.custom_minimum_size = Vector2(150, 56)
+		b.custom_minimum_size = Vector2(136, 52)
+		b.add_theme_font_size_override("font_size", 13)
 		b.disabled = not equipped
 		if equipped:
 			var pid: int = Match.equipped[cat]
@@ -118,7 +122,8 @@ func _refresh() -> void:
 		b.tooltip_text = "%s\n%s\nRarity %d\nSPD%+.0f ACC%+.0f ROAD%+.0f OFF%+.0f WET%+.0f AERO%+.0f LAND%+.0f MASS%+d" % [
 			pc.name, CATEGORY_LABELS[pc.category], pc.rarity,
 			pc.top_speed, pc.accel, pc.grip_road, pc.grip_offroad, pc.grip_wet, pc.aero, pc.landing, pc.mass]
-		b.custom_minimum_size = Vector2(130, 40)
+		b.custom_minimum_size = Vector2(128, 40)
+		b.add_theme_font_size_override("font_size", 13)
 		b.add_theme_color_override("font_color", Match.RARITY_COLORS[int(pc.rarity)])
 		var cat: String = pc.category
 		b.pressed.connect(func():
@@ -134,6 +139,7 @@ func _refresh() -> void:
 		backpack_grid.add_child(b)
 
 	radar.set_data(Match.base_stats(), Match.get_stats())
+	stage.refresh_car()  # 3D 展车跟随换装（轮胎外观等）
 
 func _toast(text: String) -> void:
 	toast_label.text = text

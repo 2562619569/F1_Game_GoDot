@@ -23,6 +23,7 @@ godot --headless --script res://game/ui/theme/build_theme.gd
 | `button_primary.tscn` | 主操作按钮（青色底深色字）：CREATE ROOM / PLAY / SELECT / READY |
 | `button_default.tscn` | 次要按钮（深色卡片底）：EXIT / BACK |
 | `panel_card.tscn` | 卡片面板（圆角 + 描边）：玩家位、选车卡、整备三栏 |
+| `panel_float.tscn` | 悬浮面板（半透明底 + 青色勾边）：叠在 3D 展台场景上的选车规格/局间整备面板 |
 | `backdrop.tscn` | 全屏背景色 |
 
 场景中实例化后按需覆盖 `text` / `custom_minimum_size` / 字号即可，不要覆盖颜色和样式盒。

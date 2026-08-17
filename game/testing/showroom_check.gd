@@ -40,28 +40,29 @@ func _ready() -> void:
 func _check_rotation() -> void:
 	# 角度差一律 wrapf 到 (-PI, PI] 再比较：出生 yaw 225° 落在欧拉角 ±180° 分支
 	# 翻转区，rotation.y 会在等价表示间跳变（3.93 ↔ -2.36），直接比原始值会误报
-	var y0: float = showroom._car.rotation.y   # showroom 为 Variant，需显式类型供下方运算使用
+	var stage: CarStage = showroom.stage
+	var y0: float = stage._car.rotation.y   # 展车在展台组件名下
 	await get_tree().create_timer(0.3).timeout
-	_note(absf(wrapf(showroom._car.rotation.y - y0, -PI, PI)) < 0.01, "无输入时车辆不自动旋转")
+	_note(absf(wrapf(stage._car.rotation.y - y0, -PI, PI)) < 0.01, "无输入时车辆不自动旋转")
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
-	showroom._unhandled_input(press)
+	stage._unhandled_input(press)
 	var drag := InputEventMouseMotion.new()
 	drag.relative = Vector2(100, 0)
-	showroom._unhandled_input(drag)
+	stage._unhandled_input(drag)
 	var release := press.duplicate()
 	release.pressed = false
-	showroom._unhandled_input(release)
-	_note(absf(wrapf(showroom._car.rotation.y - y0 + 100.0 * showroom.drag_sensitivity, -PI, PI)) < 0.01, "拖拽 100px 车辆随之旋转")
-	showroom._unhandled_input(press)  # 重新按下再反向拖拽
+	stage._unhandled_input(release)
+	_note(absf(wrapf(stage._car.rotation.y - y0 + 100.0 * stage.drag_sensitivity, -PI, PI)) < 0.01, "拖拽 100px 车辆随之旋转")
+	stage._unhandled_input(press)  # 重新按下再反向拖拽
 	drag.relative = Vector2(-50, 0)
-	showroom._unhandled_input(drag)
-	showroom._unhandled_input(release)
-	_note(wrapf(showroom._car.rotation.y - y0, -PI, PI) > -100.0 * showroom.drag_sensitivity, "反向拖拽可回转")
-	_note(not showroom._car.is_physics_processing(), "展车物理已停用（纯视觉道具，旋转不溜车）")
-	_note(showroom._car.linear_velocity.length() < 0.001, "展车静止：速度为零")
-	_note(showroom._car.position.y > 0.3 and showroom._car.position.y < 1.0, "展车摆放在落座高度（台面上方）")
+	stage._unhandled_input(drag)
+	stage._unhandled_input(release)
+	_note(wrapf(stage._car.rotation.y - y0, -PI, PI) > -100.0 * stage.drag_sensitivity, "反向拖拽可回转")
+	_note(not stage._car.is_physics_processing(), "展车物理已停用（纯视觉道具，旋转不溜车）")
+	_note(stage._car.linear_velocity.length() < 0.001, "展车静止：速度为零")
+	_note(stage._car.position.y > 0.3 and stage._car.position.y < 1.0, "展车摆放在落座高度（台面上方）")
 
 func _check_close() -> void:
 	var state := {"closed": false}
@@ -75,7 +76,7 @@ func _check_initial() -> void:
 	_note(showroom.current_car_id == 601, "初始展示 Car 表最小 id 601")
 	var live := _live_cars()
 	_note(live.size() == 1 and live[0] is Vehicle and not live[0].is_physics_processing(), "展台上有且仅有一辆展车（物理已停用）")
-	_note(showroom.get_node_or_null("Backdrop/Wall") != null, "环形背景幕布已生成")
+	_note(showroom.stage.get_node_or_null("Backdrop/Wall") != null, "环形背景幕布已生成")
 	var bar: HBoxContainer = showroom.get_node("UI/Root/BottomBar")
 	_note(bar.get_children().size() == Settings.car.data.size(), "底部按钮数 = Car 表车辆数")
 	_note(_pressed_id() == 601, "当前 601 对应按钮为按下态")
@@ -90,7 +91,7 @@ func _check_switch(cid: int) -> void:
 
 func _live_cars() -> Array:
 	var out: Array = []
-	for c in showroom.get_children():
+	for c in showroom.stage.get_children():   # 展车挂在展台组件名下
 		if c is Vehicle and not c.is_queued_for_deletion():
 			out.append(c)
 	return out

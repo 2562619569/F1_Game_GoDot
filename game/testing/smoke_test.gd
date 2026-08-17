@@ -54,10 +54,14 @@ func _run() -> void:
 	main.current_ui.play_btn.pressed.emit()
 	await get_tree().process_frame
 	ok(main.current_ui.name == "CarSelect", "play -> car select")
-	ok(main.current_ui.card_buttons.size() == 3, "3 chassis cards from Car table")
+	ok(main.current_ui.card_buttons.size() == 3, "3 chassis switch buttons from Car table")
+	ok(main.current_ui.get_node_or_null("CarStage") != null, "car select embeds 3D car stage")
 
-	# ---- 4. 选车 → 回合1 ----
+	# ---- 4. 选车 → 回合1（先切到底盘 601 预览，再确认） ----
 	main.current_ui.card_buttons[0].pressed.emit()
+	await get_tree().process_frame
+	ok(main.current_ui.stage.current_car_id == 601, "chassis button previews 601 on stage")
+	main.current_ui.confirm_btn.pressed.emit()
 	await get_tree().process_frame
 	ok(main.race != null and main.race.round_idx == 1, "round 1 started")
 	ok(main.current_ui == null, "car select UI hidden during race")
@@ -90,6 +94,9 @@ func _run() -> void:
 	await until(func(): return main.current_ui != null and main.current_ui.name == "Intermission", 10.0)
 	ok(main.current_ui.name == "Intermission", "round ended -> intermission garage")
 	ok(main.hud == null, "race HUD hidden during intermission")
+	ok(main.race == null, "race world cleared for 3D stage camera")
+	ok(main.current_ui.get_node_or_null("CarStage") != null, "intermission embeds 3D car stage")
+	ok(main.current_ui.stage.current_car_id == Match.car_id, "stage shows player chassis %d" % Match.car_id)
 	ok(main.current_ui._results.size() == 4, "round result lists 4 racers")
 	ok(main.current_ui._rewards.size() >= 1, "rank rewards granted (%d parts)" % main.current_ui._rewards.size())
 

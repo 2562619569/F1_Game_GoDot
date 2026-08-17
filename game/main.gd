@@ -19,7 +19,7 @@ const ShowroomScene := preload("res://game/ui/showroom/showroom.tscn")
 @onready var world: Node3D = $World
 @onready var ui: CanvasLayer = $UI
 
-var current_ui: Control
+var current_ui: Node
 var race: RaceManager
 var hud: Control
 var showroom: Node3D
@@ -34,10 +34,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ---------------- 界面切换 ----------------
 
-func _set_ui(c: Control) -> void:
+## 纯 Control 界面挂 UI 画布层；选车/局间为 3D 展台 + CanvasLayer 的混合场景，
+## 直接挂主节点（自带相机，需要独占视口 —— 同展示间）
+func _set_ui(c: Node) -> void:
 	_clear_ui()
 	current_ui = c
-	ui.add_child(c)
+	if c is Control:
+		ui.add_child(c)
+	else:
+		add_child(c)
 
 func _clear_ui() -> void:
 	if current_ui != null:
@@ -101,9 +106,8 @@ func start_round() -> void:
 func _on_round_ended(results: Array, rewards: Array) -> void:
 	# 等待 HUD 显示最后一帧结算提示后切界面
 	await get_tree().create_timer(1.2).timeout
-	if hud != null:  # 隐藏竞速 HUD，避免与局间/结算界面叠加
-		hud.queue_free()
-		hud = null
+	# 局间是 3D 展台场景，需要独占相机与环境，回合世界（含 HUD）先撤下
+	_clear_race()
 	if Match.round_cfg().is_final:
 		show_final_result()
 		return

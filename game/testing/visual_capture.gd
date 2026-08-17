@@ -44,6 +44,8 @@ func _run() -> void:
 	await snap("03_car_select")
 
 	main.current_ui.card_buttons[0].pressed.emit()
+	await get_tree().process_frame
+	main.current_ui.confirm_btn.pressed.emit()
 	await until(func(): return main.race != null and main.race.racing, 10.0)
 	await get_tree().create_timer(2.0).timeout
 	await snap("04_race_hud")

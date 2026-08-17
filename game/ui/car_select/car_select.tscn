@@ -1,339 +1,198 @@
 [gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://game/ui/car_select/car_select.gd" id="1_carsel"]
-[ext_resource type="PackedScene" path="res://game/ui/components/backdrop.tscn" id="2_backdrop"]
-[ext_resource type="PackedScene" path="res://game/ui/components/panel_card.tscn" id="3_panel"]
+[ext_resource type="PackedScene" path="res://game/ui/showroom/car_stage.tscn" id="2_stage"]
+[ext_resource type="PackedScene" path="res://game/ui/components/panel_float.tscn" id="3_panel_float"]
 [ext_resource type="PackedScene" path="res://game/ui/components/button_primary.tscn" id="4_btn_primary"]
 
-[node name="CarSelect" type="Control"]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="CarSelect" type="Node3D"]
 script = ExtResource("1_carsel")
 
-[node name="Background" parent="." instance=ExtResource("2_backdrop")]
+[node name="CarStage" parent="." instance=ExtResource("2_stage")]
 
-[node name="Root" type="VBoxContainer" parent="."]
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 60.0
-offset_top = 40.0
-offset_right = -60.0
-offset_bottom = -40.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 24
+mouse_filter = 2
 
-[node name="Title" type="Label" parent="Root"]
+[node name="Title" type="Label" parent="UI/Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 16.0
+offset_right = 320.0
+offset_bottom = 44.0
 theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 36
+theme_override_font_sizes/font_size = 22
 text = "CHOOSE YOUR CHASSIS"
 horizontal_alignment = 1
 
-[node name="Cards" type="HBoxContainer" parent="Root"]
-alignment = 1
-theme_override_constants/separation = 24
-size_flags_vertical = 3
-
-[node name="Card1" parent="Root/Cards" instance=ExtResource("3_panel")]
-custom_minimum_size = Vector2(300, 0)
-size_flags_vertical = 3
-
-[node name="Margin" type="MarginContainer" parent="Root/Cards/Card1"]
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 12
-
-[node name="VBox" type="VBoxContainer" parent="Root/Cards/Card1/Margin"]
-theme_override_constants/separation = 8
-
-[node name="NameLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
+[node name="CarName" type="Label" parent="UI/Root"]
+unique_name_in_owner = true
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 48.0
+offset_right = 320.0
+offset_bottom = 84.0
 theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 28
 text = "Brute Power"
+horizontal_alignment = 1
 
-[node name="DriveLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
+[node name="CarSub" type="Label" parent="UI/Root"]
+unique_name_in_owner = true
+layout_mode = 0
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -320.0
+offset_top = 86.0
+offset_right = 320.0
+offset_bottom = 106.0
 theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "RWD  ·  1500 kg"
+horizontal_alignment = 1
 
-[node name="Bars" type="VBoxContainer" parent="Root/Cards/Card1/Margin/VBox"]
-theme_override_constants/separation = 2
+[node name="SpecPanel" parent="UI/Root" instance=ExtResource("3_panel_float")]
+layout_mode = 0
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -328.0
+offset_top = -220.0
+offset_right = -24.0
+offset_bottom = 160.0
+grow_horizontal = 0
 
-[node name="BarRow" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
+[node name="Margin" type="MarginContainer" parent="UI/Root/SpecPanel"]
+theme_override_constants/margin_left = 18
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 18
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="UI/Root/SpecPanel/Margin"]
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow"]
-custom_minimum_size = Vector2(110, 0)
+[node name="SpecTitle" type="Label" parent="UI/Root/SpecPanel/Margin/VBox"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "CHASSIS SPEC"
+
+[node name="Bars" type="VBoxContainer" parent="UI/Root/SpecPanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_constants/separation = 3
+
+[node name="Row1" type="HBoxContainer" parent="UI/Root/SpecPanel/Margin/VBox/Bars"]
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row1"]
+custom_minimum_size = Vector2(96, 0)
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
 text = "TOP SPEED"
 
-[node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow"]
+[node name="Bar" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row1"]
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
 text = "████████··"
 
-[node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
+[node name="Row2" type="HBoxContainer" parent="UI/Root/SpecPanel/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow2"]
-custom_minimum_size = Vector2(110, 0)
+[node name="Caption" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row2"]
+custom_minimum_size = Vector2(96, 0)
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
 text = "ACCEL"
 
-[node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow2"]
+[node name="Bar" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row2"]
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
 text = "███████···"
 
-[node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
+[node name="Row3" type="HBoxContainer" parent="UI/Root/SpecPanel/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow3"]
-custom_minimum_size = Vector2(110, 0)
+[node name="Caption" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row3"]
+custom_minimum_size = Vector2(96, 0)
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
 text = "HANDLING"
 
-[node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow3"]
+[node name="Bar" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row3"]
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
 text = "█████·····"
 
-[node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card1/Margin/VBox/Bars"]
+[node name="Row4" type="HBoxContainer" parent="UI/Root/SpecPanel/Margin/VBox/Bars"]
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow4"]
-custom_minimum_size = Vector2(110, 0)
+[node name="Caption" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row4"]
+custom_minimum_size = Vector2(96, 0)
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
 text = "OFFROAD"
 
-[node name="Bar" type="Label" parent="Root/Cards/Card1/Margin/VBox/Bars/BarRow4"]
+[node name="Bar" type="Label" parent="UI/Root/SpecPanel/Margin/VBox/Bars/Row4"]
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 14
 text = "███·······"
 
-[node name="SlotsLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
+[node name="SlotsLabel" type="Label" parent="UI/Root/SpecPanel/Margin/VBox"]
+unique_name_in_owner = true
 theme_type_variation = &"Good"
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "SLOTS: 4 PERF + 1 FUNC"
 
-[node name="DescLabel" type="Label" parent="Root/Cards/Card1/Margin/VBox"]
+[node name="DescLabel" type="Label" parent="UI/Root/SpecPanel/Margin/VBox"]
+unique_name_in_owner = true
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
 autowrap_mode = 3
 size_flags_vertical = 3
 text = "Straight-line monster."
 
-[node name="SelectButton1" parent="Root/Cards/Card1/Margin/VBox" instance=ExtResource("4_btn_primary")]
+[node name="ConfirmButton" parent="UI/Root/SpecPanel/Margin/VBox" instance=ExtResource("4_btn_primary")]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 52)
+custom_minimum_size = Vector2(0, 50)
 theme_override_font_sizes/font_size = 18
-text = "SELECT"
+text = "SELECT  ▸"
 
-[node name="Card2" parent="Root/Cards" instance=ExtResource("3_panel")]
-custom_minimum_size = Vector2(300, 0)
-size_flags_vertical = 3
-
-[node name="Margin" type="MarginContainer" parent="Root/Cards/Card2"]
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 12
-
-[node name="VBox" type="VBoxContainer" parent="Root/Cards/Card2/Margin"]
-theme_override_constants/separation = 8
-
-[node name="NameLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 26
-text = "Agile Sprinter"
-
-[node name="DriveLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 15
-text = "FWD  ·  1100 kg"
-
-[node name="Bars" type="VBoxContainer" parent="Root/Cards/Card2/Margin/VBox"]
-theme_override_constants/separation = 2
-
-[node name="BarRow" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "TOP SPEED"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "███████···"
-
-[node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow2"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "ACCEL"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow2"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "███████···"
-
-[node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow3"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "HANDLING"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow3"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "█████████·"
-
-[node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card2/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow4"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "OFFROAD"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card2/Margin/VBox/Bars/BarRow4"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "█████·····"
-
-[node name="SlotsLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-theme_type_variation = &"Good"
-theme_override_font_sizes/font_size = 15
-text = "SLOTS: 4 PERF + 1 FUNC"
-
-[node name="DescLabel" type="Label" parent="Root/Cards/Card2/Margin/VBox"]
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-autowrap_mode = 3
-size_flags_vertical = 3
-text = "Rock solid on twisty tracks."
-
-[node name="SelectButton2" parent="Root/Cards/Card2/Margin/VBox" instance=ExtResource("4_btn_primary")]
+[node name="BottomBar" type="HBoxContainer" parent="UI/Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 52)
-theme_override_font_sizes/font_size = 18
-text = "SELECT"
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -84.0
+offset_right = 300.0
+offset_bottom = -32.0
+theme_override_constants/separation = 16
+alignment = 1
 
-[node name="Card3" parent="Root/Cards" instance=ExtResource("3_panel")]
-custom_minimum_size = Vector2(300, 0)
-size_flags_vertical = 3
-
-[node name="Margin" type="MarginContainer" parent="Root/Cards/Card3"]
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 12
-
-[node name="VBox" type="VBoxContainer" parent="Root/Cards/Card3/Margin"]
-theme_override_constants/separation = 8
-
-[node name="NameLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 26
-text = "All-Rounder"
-
-[node name="DriveLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 15
-text = "AWD  ·  1300 kg"
-
-[node name="Bars" type="VBoxContainer" parent="Root/Cards/Card3/Margin/VBox"]
-theme_override_constants/separation = 2
-
-[node name="BarRow" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow"]
-custom_minimum_size = Vector2(110, 0)
+[node name="DragHint" type="Label" parent="UI/Root"]
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -122.0
+offset_right = 260.0
+offset_bottom = -96.0
 theme_type_variation = &"Dim"
 theme_override_font_sizes/font_size = 13
-text = "TOP SPEED"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "████████·"
-
-[node name="BarRow2" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow2"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "ACCEL"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow2"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "████████·"
-
-[node name="BarRow3" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow3"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "HANDLING"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow3"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "████████·"
-
-[node name="BarRow4" type="HBoxContainer" parent="Root/Cards/Card3/Margin/VBox/Bars"]
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow4"]
-custom_minimum_size = Vector2(110, 0)
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-text = "OFFROAD"
-
-[node name="Bar" type="Label" parent="Root/Cards/Card3/Margin/VBox/Bars/BarRow4"]
-theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 14
-text = "████████·"
-
-[node name="SlotsLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-theme_type_variation = &"Good"
-theme_override_font_sizes/font_size = 15
-text = "SLOTS: 3 PERF + 2 FUNC"
-
-[node name="DescLabel" type="Label" parent="Root/Cards/Card3/Margin/VBox"]
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 13
-autowrap_mode = 3
-size_flags_vertical = 3
-text = "Strong launch grip, all-terrain."
-
-[node name="SelectButton3" parent="Root/Cards/Card3/Margin/VBox" instance=ExtResource("4_btn_primary")]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 52)
-theme_override_font_sizes/font_size = 18
-text = "SELECT"
+text = "HOLD LEFT MOUSE TO ROTATE  ·  ← / → SWITCH"
+horizontal_alignment = 1
