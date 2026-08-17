@@ -32,6 +32,11 @@ static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, env: Dictionar
 	v.front_torque_split = float(cfg.front_torque_split)
 	v.max_steering_angle = deg_to_rad(float(cfg.max_steering_angle))
 	v.steering_speed = float(cfg.steering_speed)
+	# 键盘手感全局调优（GEVP 默认值按手柄模拟量设计）：
+	# decay 0.2→0.1 转向速率随速衰减减半，高速打方向不再拖近 1 秒；
+	# 前轮滑移阈 0.15→0.3，按住方向键时少被滑移辅助强行回撤
+	v.steering_speed_decay = 0.10
+	v.steering_slip_assist = 0.30
 	v.brake_force_multiplier = float(cfg.brake_force_multiplier)
 	v.front_weight_distribution = float(cfg.front_weight_distribution)
 	v.center_of_gravity_height_offset = float(cfg.center_of_gravity_height_offset)

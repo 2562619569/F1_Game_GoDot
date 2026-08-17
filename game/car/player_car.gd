@@ -6,9 +6,23 @@ extends Node3D
 
 const KEY_LABELS := ["Q", "E"]
 
+# 键盘输入整形：二值按键 ramp 成模拟量再喂给物理（Assetto Corsa 键盘模型：
+# 油门建立 ~0.25s、释放更快；转向已由 GEVP steering_speed 平滑，不在此叠加）
+const THROTTLE_RISE := 4.0
+const THROTTLE_FALL := 10.0
+const BRAKE_RISE := 6.0
+const BRAKE_FALL := 10.0
+# 倒挡闸门：GEVP 在 brake_input > 0.75 且车速 < 1 m/s 时自动挂倒挡，
+# 键盘刹车恒为满值，弯中急刹掉速后会被误切倒挡；停稳后持续按住才放行
+const REVERSE_HOLD_TIME := 0.3
+const REVERSE_BRAKE_GATE := 0.7
+
 var vehicle: Vehicle
 var frozen := true
 var race: RaceManager = null  # 注入用于火箭锁定；调试场景可为 null
+var _throttle := 0.0
+var _brake := 0.0
+var _brake_hold := 0.0
 
 var tactical: Array = []  # [{pid, cfg, ammo, cd_left}]
 var stealth_left := 0.0
@@ -31,6 +45,9 @@ func _physics_process(delta: float) -> void:
 	if vehicle == null:
 		return
 	if frozen:
+		_throttle = 0.0
+		_brake = 0.0
+		_brake_hold = 0.0
 		vehicle.throttle_input = 0.0
 		vehicle.brake_input = 0.5
 		vehicle.steering_input = 0.0
@@ -38,20 +55,38 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if Match.auto_test:  # 冒烟测试：自动驾驶沿赛道中心线
+		_throttle = 0.0
+		_brake = 0.0
+		_brake_hold = 0.0
 		_auto_follower.drive(vehicle)
 	else:
-		vehicle.throttle_input = pow(Input.get_action_strength("Throttle"), 2.0)
-		vehicle.brake_input = Input.get_action_strength("Brakes")
+		# 倒挡下油门/刹车按键互换（与 GEVP VehicleController 一致），整形跟随互换后的映射
+		var reversing := vehicle.current_gear == -1
+		var raw_throttle: float = Input.get_action_strength("Brakes" if reversing else "Throttle")
+		var raw_brake: float = Input.get_action_strength("Throttle" if reversing else "Brakes")
+		_throttle = _ramp(_throttle, pow(raw_throttle, 2.0), THROTTLE_RISE, THROTTLE_FALL, delta)
+		_brake = _ramp(_brake, raw_brake, BRAKE_RISE, BRAKE_FALL, delta)
+
+		var brake_out := _brake
+		if not reversing and vehicle.speed < 1.5 and vehicle.local_velocity.z <= 0.1:
+			# 前进/空挡且接近停稳：刹车先压在挂倒挡阈值之下，按满 REVERSE_HOLD_TIME 秒才放行
+			if raw_brake > 0.5:
+				_brake_hold += delta
+				if _brake_hold < REVERSE_HOLD_TIME:
+					brake_out = minf(brake_out, REVERSE_BRAKE_GATE)
+			else:
+				_brake_hold = 0.0
+		else:
+			_brake_hold = 0.0
+
+		vehicle.throttle_input = _throttle
+		vehicle.brake_input = brake_out
 		vehicle.steering_input = Input.get_action_strength("Steer Left") - Input.get_action_strength("Steer Right")
 		vehicle.handbrake_input = Input.get_action_strength("Handbrake")
 		if Input.is_action_just_pressed("Tactical1"):
 			fire(0)
 		if Input.is_action_just_pressed("Tactical2"):
 			fire(1)
-		# 倒挡逻辑（与 GEVP VehicleController 一致）
-		if vehicle.current_gear == -1:
-			vehicle.brake_input = Input.get_action_strength("Throttle")
-			vehicle.throttle_input = Input.get_action_strength("Brakes")
 
 	# ---- 技能状态机 ----
 	for s in tactical:
@@ -69,6 +104,9 @@ func _physics_process(delta: float) -> void:
 	elif _was_stealth:
 		_set_transparency(0.0)
 		_was_stealth = false
+
+func _ramp(value: float, target: float, rise: float, fall: float, delta: float) -> float:
+	return move_toward(value, target, (rise if target > value else fall) * delta)
 
 func fire(slot: int) -> void:
 	if slot >= tactical.size():
