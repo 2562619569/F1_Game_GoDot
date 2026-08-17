@@ -7,14 +7,14 @@ extends Node3D
 ##
 ## 主辅路衔接(岔口融合):dirt 端头若贴近主路,构建时做四件事——
 ## 宽度喇叭过渡 + 高度对齐主路 + 端帽延伸并推入主路路面之下(消除斜接缝),
-## 并在岔口处断开主路侧墙与路缘边线;辅路与主路重叠段按深入程度逐点下沉,
-## 路缘缝口处基本齐平(无缝阶),重叠深处藏到路面下防 z-fighting。
+## 并在岔口处断开主路侧墙与路缘边线;辅路进入主路覆盖区的几何直接裁剪掉,
+## 只在路缘缝口留微小缝阶——两套路面在任何像素都不共面,从根上杜绝重叠闪烁。
 
 const WALL_COLOR := Color(0.16, 0.17, 0.19)
 const LINE_COLOR := Color(0.88, 0.88, 0.88)
 
 # 垂直分离:草地顶面低于所有路面;标线浮在路面之上。
-# 辅路不再整体下压,改为重叠区逐顶点按深入程度下沉(见 _depth_drop 与衔接参数)
+# 辅路不再整体下压也不下沉,主路覆盖区内的辅路几何直接裁剪(见 _build_strip)
 const GRASS_DROP := 0.2
 const MARKING_LIFT := 0.04
 
@@ -22,14 +22,14 @@ const MARKING_LIFT := 0.04
 const JUNCTION_ATTACH_DIST := 8.0   # 端头超出主路路缘此距离视为独立路段,不做衔接
 const JUNCTION_BLEND := 14.0        # 衔接融合区长度(m):宽度喇叭 + 高度对齐
 const JUNCTION_FLARE := 16.0        # 喇叭口目标宽度(不超过主路宽 85%,作者手调更宽则尊重)
-const JUNCTION_EXT_MARGIN := 2.5    # 端头至少深入主路路面内该距离(把端帽藏到路面下)
+const JUNCTION_EXT_MARGIN := 2.5    # 端头至少深入主路路面内该距离(把端帽藏进裁剪区)
 const JUNCTION_EXT_MAX := 12.0      # 端头向主路内延伸上限
 const JUNCTION_EXT_STEP := 1.5      # 延伸探测步长
 const JUNCTION_CAP_INSET := 1.5     # 端帽角点离主路路缘的最小内深
 const JUNCTION_CAP_PUSH := 8.0      # 端帽角点向路内推入上限
-const JUNCTION_DROP := 0.10         # 与主路重叠段的下沉量(藏进路面之下)
-const JUNCTION_SEAM_KERB := 0.8     # 路缘外侧预沉缓冲:缝口前即开始微沉,避免齐平面 z-fighting
-const JUNCTION_SEAM_TAPER := 1.7    # 缝口(深入 0)到完全下沉(深入此值)的过渡距离
+const SEAM_KERB := 0.03             # 裁剪缝口处辅路低于主路面的缝阶(防共线边闪烁)
+const SEAM_BIAS := 0.03             # 裁剪边界目标:路缘外此距离(抵消弦弧差,保证零重叠)
+const OVERPASS_CLEAR := 0.3         # 高出主路面此值的辅路视为立体交叉(桥),不裁剪
 const WALL_BREAK_MARGIN := 4.0      # 岔口处墙体/边线断开区在主路方向的外扩余量
 
 var data: TrackData = null
@@ -77,7 +77,7 @@ func _mat(c: Color, rough := 0.9) -> StandardMaterial3D:
 
 ## ---------------- 路面条带(网格 + Trimesh 碰撞) ----------------
 
-## route 可携带融合产物:_blended(与主路重叠区逐顶点下沉)、
+## route 可携带融合产物:_blended(主路覆盖区内几何被裁剪,辅路精确止于路缘)、
 ## _cap_front/_cap_back(端帽两角绝对坐标,替代端截面常规展开,封死斜接缝)
 func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> StaticBody3D:
 	var pts: PackedVector3Array = route["pts"]
@@ -92,15 +92,16 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 	st.set_material(mat)
 	var n := pts.size()
 	var blended := route.has("_blended")
+
+	# 逐截面展开左右顶点;oc < 0 = 不与主路重叠(保留),> 0 = 主路覆盖区内(裁剪)
+	var lefts: Array = []
+	var rights: Array = []
 	for i in n:
 		var side := TrackData._flat_normal(tans[i])
 		var up := tans[i].cross(side).normalized()
 		var w := widths[i] * 0.5
 		var va := pts[i] + side * w
 		var vb := pts[i] - side * w
-		if blended:  # 与主路重叠区逐顶点下沉:缝口齐平、深处藏到路面下
-			va.y -= _depth_drop(va)
-			vb.y -= _depth_drop(vb)
 		if i == 0 and cap_f.size() == 2:
 			va = cap_f[0]
 			vb = cap_f[1]
@@ -108,21 +109,106 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 			va = cap_b[0]
 			vb = cap_b[1]
 		var v := s_arr[i] / 4.0  # UV 纵向:4m 一个周期
-		st.set_normal(up)
-		st.set_uv(Vector2(0.0, v))
-		st.add_vertex(va)
-		st.set_normal(up)
-		st.set_uv(Vector2(1.0, v))
-		st.add_vertex(vb)
+		lefts.append({"p": va, "uv": Vector2(0.0, v), "nrm": up,
+			"oc": _overlap(va) if blended else -1.0})
+		rights.append({"p": vb, "uv": Vector2(1.0, v), "nrm": up,
+			"oc": _overlap(vb) if blended else -1.0})
+
+	# 逐四边形裁剪发射(融合路由在主路覆盖区被裁掉,任何像素只剩一个路面)。
+	# 喇叭口宽截面按 ≤4m 分列细分:长边线性插值会偏离弯曲路缘,细列让交点贴住真实边界
 	for i in n - 1:
-		var a := i * 2
-		st.add_index(a)
-		st.add_index(a + 2)
-		st.add_index(a + 1)
-		st.add_index(a + 1)
-		st.add_index(a + 2)
-		st.add_index(a + 3)
+		var cols := 1
+		if blended:
+			cols = maxi(1, int(ceilf(maxf(widths[i], widths[i + 1]) / 4.0)))
+		for j in cols:
+			var f0 := float(j) / float(cols)
+			var f1 := float(j + 1) / float(cols)
+			var quad := [
+				_lerp_corner(lefts[i], rights[i], f0),
+				_lerp_corner(lefts[i], rights[i], f1),
+				_lerp_corner(lefts[i + 1], rights[i + 1], f1),
+				_lerp_corner(lefts[i + 1], rights[i + 1], f0),
+			]
+			if blended:
+				for qd in quad:
+					qd["oc"] = _overlap(qd["p"])  # 细分点重算真实覆盖值,不用插值
+			var poly := _clip_to_road(quad) if blended else quad
+			for k in range(2, poly.size()):
+				_add_strip_vert(st, poly[0])
+				_add_strip_vert(st, poly[k])
+				_add_strip_vert(st, poly[k - 1])
 	return _body_with_mesh(st.commit(), group)
+
+func _lerp_corner(a: Dictionary, b: Dictionary, f: float) -> Dictionary:
+	return {
+		"p": (a["p"] as Vector3).lerp(b["p"], f),
+		"uv": (a["uv"] as Vector2).lerp(b["uv"], f),
+		"nrm": (a["nrm"] as Vector3).lerp(b["nrm"], f).normalized(),
+		"oc": 0.0,
+	}
+
+func _add_strip_vert(st: SurfaceTool, d: Dictionary) -> void:
+	st.set_normal(d["nrm"])
+	st.set_uv(d["uv"])
+	st.add_vertex(d["p"])
+
+## 顶点相对主路覆盖区的裁剪值:负 = 保留(覆盖区外,或高出路面的立体交叉桥),
+## 正 = 处于主路路面覆盖之下,应裁剪
+func _overlap(v: Vector3) -> float:
+	var lat := data.main_lateral(v)
+	var inside := float(lat["half"]) - float(lat["dist"])
+	if inside <= 0.0:
+		return inside
+	return inside if v.y < float(lat["road_y"]) + OVERPASS_CLEAR else -inside
+
+func _inside_depth(v: Vector3) -> float:
+	var lat := data.main_lateral(v)
+	return float(lat["half"]) - float(lat["dist"])
+
+## 四边形按"主路覆盖区外"(oc ≤ 0)裁剪,返回保留多边形;
+## 裁剪交点迭代逼近真实路缘(SEAM_BIAS 外侧),压 SEAM_KERB 缝阶,与主路面永不共面
+func _clip_to_road(poly: Array) -> Array:
+	var out: Array = []
+	var m := poly.size()
+	for k in m:
+		var c: Dictionary = poly[k]
+		var nb: Dictionary = poly[(k + 1) % m]
+		var oc_c := float(c["oc"])
+		var oc_n := float(nb["oc"])
+		if oc_c <= 0.0:
+			out.append(c)
+		if (oc_c <= 0.0) != (oc_n <= 0.0):
+			var t := oc_c / (oc_c - oc_n)
+			var p: Vector3 = c["p"].lerp(nb["p"], t)
+			var kept: Vector3 = c["p"] if oc_c <= 0.0 else nb["p"]
+			p = _snap_to_seam(p, kept)
+			var lat := data.main_lateral(p)
+			p.y = float(lat["road_y"]) - SEAM_KERB
+			out.append({
+				"p": p,
+				"uv": (c["uv"] as Vector2).lerp(nb["uv"], t),
+				"nrm": (c["nrm"] as Vector3).lerp(nb["nrm"], t).normalized(),
+				"oc": 0.0,
+			})
+	return out
+
+## 把裁剪交点 guess(线性插值,路缘弯曲时会偏进覆盖区)精化到"路缘外 SEAM_BIAS"处:
+## 在 guess(覆盖侧)与保留端点(外侧)间二分;保留端已贴近路缘则直接取保留端。
+## 返回点保证在真实路缘外侧 ≥ SEAM_BIAS-ε,主辅路几何零重叠
+func _snap_to_seam(guess: Vector3, kept: Vector3) -> Vector3:
+	if _inside_depth(guess) + SEAM_BIAS <= 0.0:
+		return guess
+	if _inside_depth(kept) + SEAM_BIAS > 0.0:
+		return kept
+	var lo := kept   # 路缘外侧(h ≤ 0)
+	var hi := guess  # 覆盖侧(h > 0)
+	for k in 7:
+		var mid := lo.lerp(hi, 0.5)
+		if _inside_depth(mid) + SEAM_BIAS > 0.0:
+			hi = mid
+		else:
+			lo = mid
+	return lo
 
 func _body_with_mesh(mesh: ArrayMesh, group: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
@@ -138,7 +224,8 @@ func _body_with_mesh(mesh: ArrayMesh, group: String) -> StaticBody3D:
 ## ---------------- 主辅路衔接(岔口融合) ----------------
 
 ## dirt 路由的构建副本:两端贴近主路时做端头延伸 + 宽度喇叭 + 高度对齐 +
-## 端帽推入主路。原路由不动(玩法查询仍用原始数据);重叠下沉见 _depth_drop。
+## 端帽推入主路。原路由不动(玩法查询仍用原始数据);
+## 主路覆盖区的裁剪见 _build_strip / _clip_to_road。
 func _blend_dirt(route: Dictionary) -> Dictionary:
 	var rt: Dictionary = route.duplicate(true)
 	var attached := [false, false]  # [首端, 尾端] 是否衔接主路
@@ -211,7 +298,9 @@ func _blend_dirt(route: Dictionary) -> Dictionary:
 	data._compute_tans_s(rt)
 	data._compute_radii(rt)
 
-	# 端帽:两角按喇叭口展开,再各自推入主路路面内 ≥ JUNCTION_CAP_INSET(斜接口不再留楔形缝)
+	# 端帽:两角按喇叭口展开,再各自推入主路路面内 ≥ JUNCTION_CAP_INSET;
+	# 端帽整体处于覆盖区,会在 _build_strip 的裁剪中移除——它的作用是把辅路
+	# 可见边界顶到主路路缘上,斜接口不再留楔形缝
 	tans = rt["tans"]
 	for end_i in 2:
 		if not attached[end_i]:
@@ -220,7 +309,7 @@ func _blend_dirt(route: Dictionary) -> Dictionary:
 		var ei := 0 if is_front else pts.size() - 1
 		var tdir := (-TrackData._flat_tangent(tans[0])) if is_front else TrackData._flat_tangent(tans[tans.size() - 1])
 		var nrm := TrackData._flat_normal(tdir)
-		var cap_y := pts[ei].y - JUNCTION_DROP
+		var cap_y := pts[ei].y
 		var cap: Array = []
 		for sgn: float in [1.0, -1.0]:
 			var c: Vector3 = pts[ei] + nrm * (float(mouth_ws[end_i]) * 0.5 * sgn)
@@ -233,17 +322,9 @@ func _blend_dirt(route: Dictionary) -> Dictionary:
 			cap.append(c)
 		rt["_cap_front" if is_front else "_cap_back"] = cap
 
-	# 与主路重叠的下沉在 _build_strip 里逐顶点按各自投影深度计算(_depth_drop)
+	# 主路覆盖区的裁剪在 _build_strip 里按四边形进行(_clip_to_road / _overlap)
 	rt["_blended"] = true
 	return rt
-
-## 顶点在主路重叠区的下沉量:路缘缝口近齐平(无缝阶),深入后藏到路面下(防 z-fighting)。
-## 缝口外侧 JUNCTION_SEAM_KERB 即开始微沉,避免齐平共面处闪烁。
-func _depth_drop(v: Vector3) -> float:
-	var lat := data.main_lateral(v)
-	var inside := float(lat["half"]) - float(lat["dist"])
-	var t := clampf((inside + JUNCTION_SEAM_KERB) / (JUNCTION_SEAM_KERB + JUNCTION_SEAM_TAPER), 0.0, 1.0)
-	return JUNCTION_DROP * smoothstep(0.0, 1.0, t)
 
 ## 弧长 s 是否落在任一岔口断开区(墙体/边线开缺)
 func _in_junction_mouth(s: float) -> bool:

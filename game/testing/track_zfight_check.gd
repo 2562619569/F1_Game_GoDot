@@ -1,8 +1,8 @@
 extends SceneTree
 ## headless 校验:TrackBuilder 主辅路岔口融合质量。运行:
 ## godot --headless --path . -s res://game/testing/track_zfight_check.gd
-## 覆盖:辅路与主路重叠区的垂直分层(缝口齐平/深处下沉防 z-fighting)、
-## 岔口墙体与路缘边线断开、辅路端帽(防斜接楔形缝)推入主路路面内。
+## 覆盖:辅路几何不得进入主路覆盖区(两路面无重叠像素 = 无 z-fighting)、
+## 路缘缝口近齐平(仅 SEAM_KERB 缝阶)、岔口墙体与路缘边线断开、辅路高于草面。
 
 var failures := 0
 
@@ -42,40 +42,30 @@ func _init() -> void:
 			markings = c
 	var grass_top: float = grass.position.y + 0.05  # 盒厚 0.1,顶面 = 中心 + 半高
 
-	# --- 辅路分层:按深入主路程度分类 ---
-	var seam_bad := 0    # 缝口带(路缘 ±0.6m):与主路面差应 ≤ 7cm(近齐平)
-	var deep_bad := 0    # 深入路面 ≥ 0.6m:应沉到主路面下 ≥ 4cm(防 z-fighting)
-	var below_grass := 0  # 任意辅路顶点不得低于草面
+	# --- 辅路几何与主路零重叠:主路覆盖区内(低于路面 OVERPASS_CLEAR)不得有顶点 ---
+	var inside_bad := 0    # 覆盖区内残留顶点(= 重叠 = 会闪烁)
+	var seam_bad := 0      # 缝口带(路缘 ±0.6m):应近齐平(≤ 主路面下 ~7cm)
+	var below_grass := 0   # 任意辅路顶点不得低于草面
 	var total := 0
-	var first_last: Array = []  # 各 dirt 端帽角点(防斜接缝)
 	for c in dirt_bodies:
 		var mi: MeshInstance3D = c.get_child(1)
 		var verts: PackedVector3Array = mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 		total += verts.size()
-		first_last.append_array([verts[0], verts[1], verts[verts.size() - 2], verts[verts.size() - 1]])
 		for v in verts:
 			var lat := data.main_lateral(v)
 			var inside := float(lat["half"]) - float(lat["dist"])
 			var road_y := float(lat["road_y"])
-			if inside > 0.6:
-				if v.y > road_y - 0.04:
-					deep_bad += 1
+			if inside > 0.25:
+				if v.y < road_y + 0.3:
+					inside_bad += 1  # 覆盖区内低几何 = 与主路重叠;高出路面的桥不算
 			elif inside > -0.6 and absf(v.y - road_y) > 0.07:
 				seam_bad += 1
 			if v.y < grass_top + 0.02:
 				below_grass += 1
 	ok(total > 0, "辅路网格顶点 %d 个" % total)
-	ok(seam_bad == 0, "缝口带与主路面近齐平(±0.07m),越界 %d" % seam_bad)
-	ok(deep_bad == 0, "重叠深处沉入主路面下 ≥4cm,越界 %d" % deep_bad)
+	ok(inside_bad == 0, "主路覆盖区内无辅路几何(零重叠),残留 %d" % inside_bad)
+	ok(seam_bad == 0, "缝口带近齐平(±0.07m),越界 %d" % seam_bad)
 	ok(below_grass == 0, "辅路整体高于草面(越界 %d)" % below_grass)
-
-	# --- 端帽角点:必须推入主路路面内 ≥1m(斜接口不留楔形草缝) ---
-	var cap_bad := 0
-	for v in first_last:
-		var lat := data.main_lateral(v)
-		if float(lat["half"]) - float(lat["dist"]) < 1.0:
-			cap_bad += 1
-	ok(cap_bad == 0, "端帽角点深入主路 ≥1m(越界 %d)" % cap_bad)
 
 	# --- 墙体在岔口断开:墙顶点不得出现在岔口开口区 ---
 	var wall_bad := 0
