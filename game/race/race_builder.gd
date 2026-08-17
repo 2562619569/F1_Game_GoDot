@@ -47,9 +47,23 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	cam.follow_distance = 6.5
 	cam.follow_height = 2.6
 	cam.speed = 20.0
+	cam.maximum_fov = 79.0   # FOV 随速度轻微拉伸（上游默认 85 摆幅偏大）
 	race.add_child(cam)
 	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
 	cam.follow_this = player_racer.vehicle
+
+	# 碰撞震屏：PVC 自带 trigger_shake（无需另找模块），车身开启接触上报，
+	# 按撞击相对速度映射强度/时长，轻蹭（<6 m/s）不触发
+	var pv := player_racer.vehicle
+	pv.contact_monitor = true
+	pv.max_contacts_reported = 4
+	pv.body_entered.connect(func(body: Node) -> void:
+		var rel := pv.linear_velocity
+		if body is RigidBody3D:
+			rel -= body.linear_velocity
+		var impact := rel.length()
+		if impact > 6.0:
+			cam.trigger_shake(clampf((impact - 6.0) / 40.0, 0.03, 0.3), 0.25))
 
 	return {"track": track, "track_data": track_data, "racers": racers,
 		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque}
