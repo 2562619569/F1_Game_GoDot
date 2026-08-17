@@ -1,0 +1,85 @@
+{
+  "sample_rate": 44100,
+  "cylinders": 4,
+  "idle_rpm": 1000,
+  "max_rpm": 8500,
+  "acc": [
+    {
+      "file": "acc_1000.wav",
+      "rpm": 1000
+    },
+    {
+      "file": "acc_2000.wav",
+      "rpm": 2000
+    },
+    {
+      "file": "acc_3000.wav",
+      "rpm": 3000
+    },
+    {
+      "file": "acc_4500.wav",
+      "rpm": 4500
+    },
+    {
+      "file": "acc_6000.wav",
+      "rpm": 6000
+    },
+    {
+      "file": "acc_7500.wav",
+      "rpm": 7500
+    },
+    {
+      "file": "acc_8500.wav",
+      "rpm": 8500
+    }
+  ],
+  "dec": [
+    {
+      "file": "dec_1000.wav",
+      "rpm": 1000
+    },
+    {
+      "file": "dec_2000.wav",
+      "rpm": 2000
+    },
+    {
+      "file": "dec_3000.wav",
+      "rpm": 3000
+    },
+    {
+      "file": "dec_4500.wav",
+      "rpm": 4500
+    },
+    {
+      "file": "dec_6000.wav",
+      "rpm": 6000
+    },
+    {
+      "file": "dec_7500.wav",
+      "rpm": 7500
+    },
+    {
+      "file": "dec_8500.wav",
+      "rpm": 8500
+    }
+  ],
+  "generator": "make_engine_loops.py",
+  "burble": [
+    "burble_0.wav",
+    "burble_1.wav",
+    "burble_2.wav"
+  ],
+  "roar": [
+    "roar_0.wav",
+    "roar_1.wav"
+  ],
+  "flutter": [
+    "flutter_0.wav",
+    "flutter_1.wav"
+  ],
+  "redline": [
+    "redline_0.wav",
+    "redline_1.wav"
+  ],
+  "shift_burble": "shift_burble.wav"
+}

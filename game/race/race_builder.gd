@@ -157,10 +157,7 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	if is_player:
 		v.add_to_group("player_car")
 		ctrl.setup(v, track_data, race)
-		var snd := ENGINE_SOUND.instantiate()
-		snd.max_db = -16.0
-		snd.vehicle = v  # engine_sound.gd 导出类型是 Vehicle 节点
-		v.add_child(snd)
+		_attach_engine_audio(v)
 	else:
 		ctrl.setup(v, track_data, _grid_lane(track_data, grid_no))
 	var r := Racer.new()
@@ -169,6 +166,20 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	r.vehicle = v
 	r.ctrl = ctrl
 	return r
+
+## 玩家车引擎声：VNS 合成组件（多 RPM 分层交叉淡化 + 事件音效），
+## 采样库缺失时回退 GEVP 自带单采样变调，保证不出无声车
+static func _attach_engine_audio(v: Vehicle) -> void:
+	var snd := EngineAudioVNS.new()
+	snd.position = Vector3(0, 0.6, 0)
+	v.add_child(snd)
+	if snd.setup(v):
+		return
+	snd.queue_free()
+	var fallback := ENGINE_SOUND.instantiate()
+	fallback.max_db = -16.0
+	fallback.vehicle = v  # engine_sound.gd 导出类型是 Vehicle 节点
+	v.add_child(fallback)
 
 static func _grid_position(track_data: TrackData, grid_no: int) -> Vector3:
 	if track_data != null:

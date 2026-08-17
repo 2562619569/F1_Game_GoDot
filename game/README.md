@@ -23,7 +23,10 @@ game/
 │   │                          #   Car 表基础参数 + 改件加成 + 天气修正。
 │   │                          #   换物理插件/调改装手感只改这里
 │   ├── player_car.gd          # 玩家输入 + 战术技能（火箭/隐身/氮气，表驱动）
-│   └── ai_racer.gd            # AI 对手（车道保持 + 强度系数）
+│   ├── ai_racer.gd            # AI 对手（车道保持 + 强度系数）
+│   └── engine_audio_vns.gd    # 引擎声合成（VNS 移植）：加速/减速双采样库按 RPM
+│                              #   分层恒功率交叉淡化 + 换挡回火/收油回火/红线断油
+│                              #   事件音效。采样资产与参数见 assets/audio/engine/
 ├── race/
 │   ├── race_manager.gd        # 单回合总控：赛道/天气/掉落/发车位/排名/结算
 │   ├── weather_env.gd         # 天气词缀：环境表现 + 表面摩擦修正 + 配装建议
@@ -77,6 +80,9 @@ game/
 # 全循环冒烟测试（大厅→房间→play→4回合→改装生效→冠军→回大厅，29 断言）
 "E:/godot/godot-4.7.1/Godot_v4.7.1-stable_win64.exe" --headless --path . \
     res://game/testing/smoke_test.tscn
+
+# 引擎声 VNS 移植自检（分层交叉淡化/滞回/事件音效，-s 模式不依赖 autoload）
+"C:/Tools/Godot/Godot.exe" --headless -s game/testing/engine_audio_check.gd
 
 # 首次添加新脚本后需重建类缓存：
 # 同上命令加 --import 参数先跑一次
