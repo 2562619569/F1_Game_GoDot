@@ -22,6 +22,16 @@ extends RefCounted
 ## 未选外观件时的默认轮毂 / 未装轮胎改件时的原厂胎（占位资产兜底名）
 const DEFAULT_HUB := "sport_v1"
 const DEFAULT_TIRE := "stock_v1"
+
+## 碰撞盒（贴地底盘低盒）：占位 demo 凸包只有 2.45×1.3×0.6，而真实车壳长 4.7+、
+## 宽 2.1——车头 1m 多、两侧各 0.4m 无碰撞体（视觉穿墙），且高顶角远在质心之上
+## （撞墙/车车刮蹭产生翻滚力矩而非横向推力，一顶就翻）。按车壳包围盒重建为低盒：
+## 长宽贴合车身（各边内缩 COL_SKIN），盒底离地 COL_CLEARANCE（避让悬挂压缩行程，
+## 不抢车轮接地），高度压到质心附近——上盖/车顶不参与碰撞（赛道墙 1.2m、接触
+## 都在低处），换来撞击难以翻车。
+const COL_CLEARANCE := 0.15
+const COL_HEIGHT := 0.5
+const COL_SKIN := 0.05
 ## 默认前/后刹车盘（真实资产，无对应占位；缺失时该侧不挂）
 const DEFAULT_BRAKE_FRONT := "front_v1"
 const DEFAULT_BRAKE_REAR := "rear_v1"
@@ -109,6 +119,10 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 	v.front_tire_radius = tire.get("radius", 0.3)
 	v.rear_tire_radius = tire.get("radius", 0.3)
 
+	# 碰撞体：demo 占位凸包 → 按真实车壳包围盒重建的贴地底盘低盒
+	# （须在胎半径写入后：盒底离地量以真实胎半径推算地面高度）
+	_setup_collision(v, body_visual, v.front_tire_radius, float(front_axle["y"]))
+
 	var hub_outer: float = hub.get("outer", 0.0)
 	if hub.scene == null or hub_outer <= 0.0:
 		hub_outer = tire_width * 0.5
@@ -163,6 +177,49 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 			# 盘面固定亮面纯金属，卡钳材质保留 GLB 原样
 			_WheelMaterials.apply_disc(disc)
 	return true
+
+## 占位 demo 凸包 → 贴地底盘低盒。地面高度 = 前轴 y − 胎半径（静态悬挂压缩后
+## 车身原点到地面的距离，与 vehicle.initialize() 的轮位抬升推导一致）。
+static func _setup_collision(v: Vehicle, body_visual: Node3D, tire_radius: float, front_axle_y: float) -> void:
+	var bounds := _scene_aabb(body_visual)
+	if bounds.size.x <= 0.0 or bounds.size.z <= 0.0:
+		return   # 车壳无可测网格：保留占位凸包（与占位视觉本来就配套）
+	var ground_y := front_axle_y - tire_radius
+	var size := Vector3(
+			maxf(0.8, bounds.size.x - COL_SKIN * 2.0),
+			COL_HEIGHT,
+			maxf(1.6, bounds.size.z - COL_SKIN * 2.0))
+	var col := v.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if col == null:
+		col = CollisionShape3D.new()
+		col.name = "CollisionShape3D"
+		v.add_child(col)
+	var box := BoxShape3D.new()
+	box.size = size
+	col.shape = box
+	col.transform = Transform3D(Basis(), Vector3(bounds.get_center().x,
+			ground_y + COL_CLEARANCE + size.y * 0.5, bounds.get_center().z))
+
+## 节点子树的本地包围盒（车身 GLB 入树前量尺寸用）：
+## 逐 MeshInstance3D 的 mesh.get_aabb() 按累积 transform 变换后取并集，
+## 无可见网格时返回负 size，由调用方识别。
+static func _scene_aabb(root_node: Node3D) -> AABB:
+	var bounds := AABB()
+	var has_bounds := false
+	var stack: Array = [[root_node, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var top: Array = stack.pop_back()
+		var node := top[0] as Node3D
+		var xf: Transform3D = top[1] * node.transform
+		if node is MeshInstance3D and node.visible and node.mesh != null:
+			var mesh_aabb: AABB = xf * node.mesh.get_aabb()
+			bounds = mesh_aabb if not has_bounds else bounds.merge(mesh_aabb)
+			has_bounds = true
+		for child in node.get_children():
+			if child is Node3D:
+				stack.append([child, xf])
+	return bounds
+
 ## 读取 wheels/<id>/hub.json 或 tires/<id>/tire.json 一侧的资产描述：
 ## {scene: PackedScene(缺失为 null), center: Vector3, radius: float, width: float,
 ##  outer: float(原点→外盘面，仅轮毂), mid_x: float(原点→桶身几何中线，仅轮毂)}

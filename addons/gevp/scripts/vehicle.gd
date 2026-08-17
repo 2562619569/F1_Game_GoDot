@@ -103,6 +103,14 @@ extends RigidBody3D
 @export var stability_upright_spring := 1.0
 ## A multiplier for the torque used to dampen rotation while airborne.
 @export var stability_upright_damping := 1000.0
+## 本地修改：接地防翻——≥3 轮仍接地但车身倾斜已达该 uprightness（basis.y·UP，
+## 0.90 ≈ 26°）以下时（撞墙顶角、被别的车顶起侧倾），以弱于空中的强度施加
+## 回正力矩并抑制横滚/俯仰角速度，把将翻未翻的车身拉回来。正常悬挂侧倾与
+## 常规坡度（<20°）不会触及阈值，不影响正常操控。
+@export var stability_grounded_engage_uprightness := 0.90
+@export var stability_grounded_roll_strength := 0.6
+@export var stability_grounded_roll_damping := 500.0
+
 
 @export_group("Motor")
 ## Maximum motor torque in NM.
@@ -997,6 +1005,15 @@ func process_stability() -> void:
 			apply_torque(stability_torque_vector)
 		else:
 			stability_yaw_torque *= stability_yaw_ground_multiplier
+			# 本地修改：接地防翻（参数说明见导出变量）。只纠正横滚/俯仰（回正轴
+			# basis.y×UP 垂直于偏航，阻尼项也只取 x/z 角速度分量），不干预转向。
+			var uprightness := global_transform.basis.y.dot(Vector3.UP)
+			if uprightness < stability_grounded_engage_uprightness:
+				stability_torque_vector = (global_transform.basis.y.cross(Vector3.UP) * vehicle_inertia \
+						* stability_upright_spring * stability_grounded_roll_strength) \
+						+ (-Vector3(angular_velocity.x, 0.0, angular_velocity.z) * stability_grounded_roll_damping)
+				apply_torque(stability_torque_vector)
+				is_stability_on = true
 		
 		if stability_yaw_torque:
 			is_stability_on = true

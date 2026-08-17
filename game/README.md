@@ -87,6 +87,9 @@ game/
 # 升挡转速下坠自检（换挡窗口内 motor_rpm 收敛到新挡匹配转速）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/shift_rev_check.gd
 
+# 碰撞体检（美术装配后碰撞体重建为贴地底盘低盒 + 撞墙不穿不翻 + 接地防翻回正）
+"C:/Tools/Godot/Godot.exe" --headless -s game/testing/collision_check.gd
+
 # 首次添加新脚本后需重建类缓存：
 # 同上命令加 --import 参数先跑一次
 ```
