@@ -173,6 +173,12 @@ func player_speed_kmh() -> int:
 func player_gear() -> int:
 	return maxi(0, player_racer.vehicle.current_gear)
 
+func player_rpm() -> float:
+	return player_racer.vehicle.motor_rpm
+
+func player_max_rpm() -> float:
+	return player_racer.vehicle.max_rpm
+
 func time_limit_s() -> float:
 	return float(Match.round_cfg().time_limit)
 

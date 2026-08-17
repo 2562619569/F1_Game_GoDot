@@ -9,7 +9,7 @@ var manager: RaceManager
 @onready var timer_label: Label = %TimerLabel
 @onready var standings_box: VBoxContainer = %StandingsBox
 @onready var countdown_label: Label = %CountdownLabel
-@onready var speed_label: Label = %SpeedLabel
+@onready var speedometer: Speedometer = %Speedometer
 @onready var tactical_box: HBoxContainer = %TacticalBox
 @onready var toast_label: Label = %ToastLabel
 
@@ -32,7 +32,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if manager == null or manager.ended:
 		return
-	speed_label.text = "%d km/h   G%d" % [manager.player_speed_kmh(), manager.player_gear()]
+	speedometer.set_values(manager.player_speed_kmh(), manager.player_gear(),
+			manager.player_rpm(), manager.player_max_rpm())
 	timer_label.text = "%d / %ds" % [roundi(manager.race_time), roundi(manager.time_limit_s())]
 
 	if _countdown_left > 0.0:

@@ -20,10 +20,12 @@ const K_LANDING_BUMP := 0.03        # landing +1 → 缓冲止点/落地稳定 +
 const K_LANDING_UPRIGHT := 0.06     # landing +1 → 空中回正弹簧 +6%
 
 static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, env: Dictionary, torque_scale := 1.0) -> void:
+	var accel_bonus := float(stats.accel) - float(cfg.accel)
+	var top_speed_bonus := float(stats.top_speed) - float(cfg.top_speed)
 	# --- 底盘基础参数（Car 表，字段名与 vehicle.gd 导出变量一一对应）---
 	v.vehicle_mass = maxf(500.0, float(cfg.weight) + stats.mass)
-	v.max_torque = float(cfg.max_torque) * (1.0 + stats.accel * K_ACCEL_TORQUE) * torque_scale
-	v.max_rpm = float(cfg.max_rpm) * (1.0 + stats.top_speed * K_TOPSPEED_RPM)
+	v.max_torque = float(cfg.max_torque) * (1.0 + accel_bonus * K_ACCEL_TORQUE) * torque_scale
+	v.max_rpm = float(cfg.max_rpm) * (1.0 + top_speed_bonus * K_TOPSPEED_RPM)
 	v.final_drive = float(cfg.final_drive)
 	var gears: Array[float] = []
 	for g in cfg.gear_ratios:
