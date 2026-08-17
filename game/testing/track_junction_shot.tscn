@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://game/testing/track_junction_shot.gd" id="1_js"]
+
+[node name="TrackJunctionShot" type="Node3D"]
+script = ExtResource("1_js")

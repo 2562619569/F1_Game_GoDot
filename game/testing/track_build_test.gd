@@ -63,6 +63,7 @@ func _ready() -> void:
 	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+墙)" % get_tree().get_nodes_in_group("Road").size())
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())
 	ok(get_tree().get_nodes_in_group("Grass").size() >= 1, "Grass 组 %d 个" % get_tree().get_nodes_in_group("Grass").size())
+	ok(builder.junctions.size() == 4, "岔口融合 %d 处(4 个 dirt 端头均衔主路)" % builder.junctions.size())
 	var has_trimesh := false
 	for group in ["Road", "Dirt"]:
 		for n in get_tree().get_nodes_in_group(group):

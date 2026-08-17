@@ -103,6 +103,46 @@ func _compute_radii(route: Dictionary) -> void:
 		radii[i] = minf(9999.0, la * lb * lc / absf(cross))
 	route["radii"] = radii
 
+## 任意点相对主路的横向信息(xz 投影到最近段求精确垂距)。
+## 返回 {dist: 到中心线垂距(非负), half: 垂足处半宽, road_y: 垂足处路面高度,
+##       s: 垂足弧长, foot: 垂足坐标}。辅路岔口融合(TrackBuilder)用。
+func main_lateral(pos: Vector3) -> Dictionary:
+	var pts: PackedVector3Array = main["pts"]
+	var n := pts.size()
+	if n == 0:
+		return {"dist": 1e9, "half": 12.0, "road_y": 0.0, "s": 0.0, "foot": Vector3.ZERO}
+	var widths: PackedFloat32Array = main["widths"]
+	var s_arr: PackedFloat32Array = main["s_arr"]
+	var idx := nearest_index(pos, -1)
+	var best_d := 1e18
+	var best_a := idx
+	var best_b := idx
+	var best_t := 0.0
+	for i in range(maxi(idx - 1, 0), mini(idx + 1, n - 2) + 1):
+		var pa := pts[i]
+		var ab := Vector2(pts[i + 1].x - pa.x, pts[i + 1].z - pa.z)
+		var L2 := ab.length_squared()
+		if L2 < 1e-8:
+			continue
+		var t := clampf(Vector2(pos.x - pa.x, pos.z - pa.z).dot(ab) / L2, 0.0, 1.0)
+		var proj := Vector2(pa.x, pa.z) + ab * t
+		var d := proj.distance_to(Vector2(pos.x, pos.z))
+		if d < best_d:
+			best_d = d
+			best_a = i
+			best_b = i + 1
+			best_t = t
+	var a := pts[best_a]
+	var b := pts[best_b]
+	var foot := a.lerp(b, best_t)
+	return {
+		"dist": best_d,
+		"half": lerpf(widths[best_a], widths[best_b], best_t) * 0.5,
+		"road_y": lerpf(a.y, b.y, best_t),
+		"s": lerpf(s_arr[best_a], s_arr[best_b], best_t),
+		"foot": foot,
+	}
+
 static func _flat_tangent(t: Vector3) -> Vector3:
 	var v := Vector3(t.x, 0.0, t.z)
 	return v.normalized() if v.length() > 1e-4 else Vector3(0.0, 0.0, -1.0)
