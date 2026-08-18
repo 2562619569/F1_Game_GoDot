@@ -256,20 +256,33 @@ func race_info() -> Dictionary:
 		"weather_label": String(env_cfg.get("label", "Sunny")),
 	}
 
+# HUD 每帧调用；发车前/回合结束后 player_racer 及其 vehicle、ctrl
+# 可能未就绪或已释放，这里必须返回安全默认值，否则每帧刷 SCRIPT ERROR
+# 把 user://logs 撑到数 GB。
 func player_speed_kmh() -> int:
+	if player_racer == null or player_racer.vehicle == null:
+		return 0
 	return roundi(player_racer.vehicle.speed * 3.6)
 
 func player_gear() -> int:
+	if player_racer == null or player_racer.vehicle == null:
+		return 0
 	return maxi(0, player_racer.vehicle.current_gear)
 
 func player_rpm() -> float:
+	if player_racer == null or player_racer.vehicle == null:
+		return 0.0
 	return player_racer.vehicle.motor_rpm
 
 func player_max_rpm() -> float:
+	if player_racer == null or player_racer.vehicle == null:
+		return 0.0
 	return player_racer.vehicle.max_rpm
 
 func time_limit_s() -> float:
 	return float(Match.round_cfg().time_limit)
 
 func player_tactical_ui() -> Array:
+	if player_racer == null or player_racer.ctrl == null:
+		return []
 	return player_racer.ctrl.tactical_ui()

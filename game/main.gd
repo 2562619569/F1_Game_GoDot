@@ -329,18 +329,30 @@ func _transition_garage_to_race_cinematic(stage: CarStage) -> void:
 	# the chase pose; no angle wrapping or lateral orbit is involved.
 	var fixed_title := "ENTERING GRID"
 	var fixed_detail := "%s  /  ROUND %d" % [String(Settings.car.data[Match.car_id].name).to_upper(), Match.round_index]
-	var focus_dir := -start_xf.basis.z.normalized()
-	var focus_depth := maxf((spawn.origin - start_xf.origin).dot(focus_dir), 1.0)
-	var fixed_focus := start_xf.origin + focus_dir * focus_depth
+	# Preserve the showroom's actual visual focus when moving the camera to the
+	# physical race car. The vehicle root is not the same point as the displayed
+	# car's framed center, which otherwise makes the car sit low on the first beat.
+	var display_car := stage.display_car()
+	var display_focus := stage.to_global(Vector3(0.0, 0.65, 0.0))
+	var focus_local := display_car.global_transform.affine_inverse() * display_focus
+	var fixed_focus := spawn * focus_local
+	var tracked_origin := spawn.origin
 	var tw := create_tween()
 	tw.tween_method(func(w: float):
+		if not is_instance_valid(pv) or not is_instance_valid(cam) \
+				or not is_instance_valid(layer_cam) or not is_instance_valid(rect):
+			return
 		var live_spawn := pv.global_transform
-		# Do not add the suspension/drop delta to the cinematic path. The garage
-		# layer is mapped to the live car separately; moving the camera with the
-		# drop makes the first frames look like an unintended vertical jolt.
+		# The race car is the subject during this opening beat. Follow its real
+		# drop and rebound with a damped origin so the physical landing reads as
+		# an intentional camera-follow moment instead of a detached background.
+		tracked_origin = tracked_origin.lerp(live_spawn.origin, 0.32)
 		var motion_w := _smoothstep(0.10, 1.0, w)
 		var pos := start_xf.origin.lerp(end_xf.origin, motion_w)
-		var focus_basis := Basis.looking_at(fixed_focus - pos, Vector3.UP)
+		pos += tracked_origin - spawn.origin
+		var tracked_focus := tracked_origin + live_spawn.basis * focus_local
+		var focus_point := fixed_focus.lerp(tracked_focus, _smoothstep(0.04, 0.28, w))
+		var focus_basis := Basis.looking_at(focus_point - pos, Vector3.UP)
 		var path_basis := start_xf.basis.slerp(focus_basis, _smoothstep(0.10, 0.56, w))
 		path_basis = path_basis.slerp(end_xf.basis, _smoothstep(0.82, 0.98, w))
 		# The chase camera's first physics frame derives this exact target from the
@@ -450,13 +462,13 @@ func _finish_cinematic_transition(sub: SubViewport, overlay: CanvasLayer,
 		rush_layer: CanvasLayer, cinematic: CanvasLayer) -> void:
 	if is_instance_valid(hud):
 		create_tween().tween_property(hud, "modulate:a", 1.0, 0.6)
-	if _garage_host != null:
+	if is_instance_valid(_garage_host):
 		_garage_host.queue_free()
-		_garage_host = null
-	rush_layer.queue_free()
-	overlay.queue_free()
-	cinematic.queue_free()
-	sub.queue_free()
+	_garage_host = null
+	_safe_queue_free(rush_layer)
+	_safe_queue_free(overlay)
+	_safe_queue_free(cinematic)
+	_safe_queue_free(sub)
 	if not is_instance_valid(race) or race.chase_camera == null:
 		return
 	var cam := race.chase_camera
@@ -471,12 +483,12 @@ func _sync_layer_camera(layer_cam: Camera3D, layer_car_xf: Transform3D,
 func _finish_garage_transition(sub: SubViewport, overlay: CanvasLayer, rush_layer: CanvasLayer) -> void:
 	if is_instance_valid(hud):
 		create_tween().tween_property(hud, "modulate:a", 1.0, 0.6)
-	if _garage_host != null:
+	if is_instance_valid(_garage_host):
 		_garage_host.queue_free()
-		_garage_host = null
-	rush_layer.queue_free()
-	overlay.queue_free()
-	sub.queue_free()
+	_garage_host = null
+	_safe_queue_free(rush_layer)
+	_safe_queue_free(overlay)
+	_safe_queue_free(sub)
 	if not is_instance_valid(race) or race.chase_camera == null:
 		return
 	# 终点即追尾相机静止时的牵引目标：恢复物理更新后无跳变；
@@ -484,6 +496,10 @@ func _finish_garage_transition(sub: SubViewport, overlay: CanvasLayer, rush_laye
 	var cam := race.chase_camera
 	cam.set_physics_process(true)
 	race.begin_countdown()
+
+func _safe_queue_free(node: Node) -> void:
+	if is_instance_valid(node):
+		node.queue_free()
 
 func _on_player_finished(_rank: int, _finish_time: float) -> void:
 	if _finish_slowmo_active:
@@ -526,7 +542,9 @@ func _on_round_ended(results: Array, rewards: Array) -> void:
 
 func _transition_race_to_garage(garage: Node3D) -> void:
 	if not is_instance_valid(race) or race.chase_camera == null \
-			or race.player_racer == null or garage.get_node_or_null("CarStage") == null:
+			or race.player_racer == null or race.player_racer.vehicle == null \
+			or not is_instance_valid(race.player_racer.vehicle) \
+			or garage.get_node_or_null("CarStage") == null:
 		_clear_race()
 		_set_ui(garage)
 		return
@@ -585,20 +603,30 @@ func _transition_race_to_garage(garage: Node3D) -> void:
 	var start_fov := race_cam.fov
 	stage.camera.global_transform = start_xf
 	stage.camera.fov = start_fov
-	var focus := layer_car_xf.origin + Vector3.UP * 0.65
-	var travel := garage_cam_xf.origin - start_xf.origin
-	var control_a := start_xf.origin + travel * 0.3 + Vector3.UP * 0.18
-	var control_b := start_xf.origin + travel * 0.78 + Vector3.UP * 0.08
+	var focus := stage.to_global(Vector3(0.0, 0.65, 0.0))
 
 	var tw := create_tween().set_ignore_time_scale(true)
 	tw.tween_method(func(w: float):
-		var pos := _cubic_bezier(start_xf.origin, control_a, control_b, garage_cam_xf.origin, w)
+		if not is_instance_valid(pv) or not is_instance_valid(race_cam) \
+				or not is_instance_valid(stage) or not is_instance_valid(rect):
+			return
+		# Phase A keeps the garage car pixel-aligned with the live race car while
+		# only the environment crossfades. Phase B starts after the garage is fully
+		# opaque and carries that same car into the final workshop composition.
+		var matched_xf := layer_car_xf * pv.global_transform.affine_inverse() \
+				* race_cam.global_transform
+		var camera_w := _smoothstep(0.42, 1.0, w)
+		var travel := garage_cam_xf.origin - matched_xf.origin
+		var control_a := matched_xf.origin + travel * 0.3 + Vector3.UP * 0.18
+		var control_b := matched_xf.origin + travel * 0.78 + Vector3.UP * 0.08
+		var pos := _cubic_bezier(matched_xf.origin, control_a, control_b,
+				garage_cam_xf.origin, camera_w)
 		var look_basis := Basis.looking_at(focus - pos, Vector3.UP)
-		var basis := start_xf.basis.slerp(look_basis, _smoothstep(0.0, 0.82, w))
-		basis = basis.slerp(garage_cam_xf.basis, _smoothstep(0.86, 1.0, w))
+		var basis := matched_xf.basis.slerp(look_basis, _smoothstep(0.0, 0.72, camera_w))
+		basis = basis.slerp(garage_cam_xf.basis, _smoothstep(0.82, 1.0, camera_w))
 		stage.camera.global_transform = Transform3D(basis, pos)
-		stage.camera.fov = lerpf(start_fov, garage_fov, _smoothstep(0.08, 1.0, w))
-		rect.modulate.a = _smoothstep(0.02, 0.9, w), 0.0, 1.0, RACE_TO_GARAGE_SEC) \
+		stage.camera.fov = _lerp_camera_fov(start_fov, garage_fov, camera_w)
+		rect.modulate.a = _smoothstep(0.0, 0.42, w), 0.0, 1.0, RACE_TO_GARAGE_SEC) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await tw.finished
 
