@@ -11,8 +11,9 @@ enum Type { SUNNY, SANDSTORM, STORM, SNOW }
 const ENV_DIR := "res://game/race/tracks/data"
 
 ## 完整环境描述：label/chip/advice 供 UI 展示；sky_*/sun/energy/pitch/yaw/
-## fog*/ambient*/glow* 为环境表现；road/dirt/wet 为抓地修正；grass/road_c/dirt_c
-## 为地面着色。env 文件同名键(JSON 数组表示颜色)可直接覆盖除 label/chip/advice 外的键。
+## fog*/ambient*/glow* 为环境表现；road/dirt/gravel/wet 为抓地修正；
+## grass/road_c/dirt_c/gravel_c 为地面着色。env 文件同名键(JSON 数组表示颜色)
+## 可直接覆盖除 label/chip/advice 外的键。
 const DATA := {
 	Type.SUNNY: {
 		"label": "Sunny", "chip": Color(1.0, 0.83, 0.35),
@@ -22,8 +23,9 @@ const DATA := {
 		"fog": Color(0.75, 0.86, 0.96), "fog_density": 0.0035,
 		"ambient": Color(0.6, 0.7, 0.85), "ambient_energy": 1.0,
 		"glow": true, "glow_intensity": 0.5,
-		"road": 1.0, "dirt": 1.0, "wet": false,
+		"road": 1.0, "dirt": 1.0, "gravel": 1.0, "wet": false,
 		"grass": Color(0.30, 0.55, 0.28), "road_c": Color(0.22, 0.23, 0.26), "dirt_c": Color(0.52, 0.40, 0.26),
+		"gravel_c": Color(0.60, 0.55, 0.45),
 		"advice": "Clear skies. Go full top speed build.",
 	},
 	Type.SANDSTORM: {
@@ -34,8 +36,9 @@ const DATA := {
 		"fog": Color(0.84, 0.72, 0.52), "fog_density": 0.012,
 		"ambient": Color(0.8, 0.68, 0.5), "ambient_energy": 1.1,
 		"glow": true, "glow_intensity": 0.3,
-		"road": 0.95, "dirt": 1.05, "wet": false,
+		"road": 0.95, "dirt": 1.05, "gravel": 0.95, "wet": false,
 		"grass": Color(0.62, 0.52, 0.28), "road_c": Color(0.38, 0.33, 0.26), "dirt_c": Color(0.68, 0.52, 0.28),
+		"gravel_c": Color(0.74, 0.62, 0.40),
 		"advice": "Gravel canyon ahead. Rally tires + reinforced suspension.",
 	},
 	Type.STORM: {
@@ -46,8 +49,9 @@ const DATA := {
 		"fog": Color(0.32, 0.38, 0.48), "fog_density": 0.005,
 		"ambient": Color(0.4, 0.45, 0.58), "ambient_energy": 1.2,
 		"glow": true, "glow_intensity": 0.45,
-		"road": 0.76, "dirt": 0.88, "wet": true,
+		"road": 0.76, "dirt": 0.88, "gravel": 0.82, "wet": true,
 		"grass": Color(0.22, 0.38, 0.22), "road_c": Color(0.16, 0.17, 0.20), "dirt_c": Color(0.38, 0.31, 0.21),
+		"gravel_c": Color(0.44, 0.41, 0.35),
 		"advice": "Soaked tarmac. Rain tires + high-downforce wing.",
 	},
 	Type.SNOW: {
@@ -58,8 +62,9 @@ const DATA := {
 		"fog": Color(0.86, 0.90, 0.98), "fog_density": 0.004,
 		"ambient": Color(0.85, 0.88, 0.94), "ambient_energy": 1.1,
 		"glow": true, "glow_intensity": 0.4,
-		"road": 0.66, "dirt": 0.60, "wet": true,
+		"road": 0.66, "dirt": 0.60, "gravel": 0.60, "wet": true,
 		"grass": Color(0.88, 0.92, 0.98), "road_c": Color(0.55, 0.58, 0.64), "dirt_c": Color(0.72, 0.76, 0.84),
+		"gravel_c": Color(0.72, 0.74, 0.78),
 		"advice": "Packed ice. Grip is everything: all-terrain or rain tires.",
 	},
 }
@@ -68,7 +73,7 @@ const DATA := {
 const OVERLAY_KEYS := ["sky_top", "sky_horizon", "sky_ground_horizon", "sky_ground",
 	"sun", "energy", "pitch", "yaw", "fog", "fog_density",
 	"ambient", "ambient_energy", "glow", "glow_intensity",
-	"road", "dirt", "wet", "grass", "road_c", "dirt_c"]
+	"road", "dirt", "gravel", "wet", "grass", "road_c", "dirt_c", "gravel_c"]
 
 ## 配表字符串 → 枚举的唯一解析口（未知值回退 SUNNY）
 static func id(s: String) -> Type:
@@ -91,11 +96,11 @@ static func cfg(weather: Type) -> Dictionary:
 ## 表面摩擦修正（应用到轮胎字典）
 static func surface_mod(weather: Type) -> Dictionary:
 	var c := cfg(weather)
-	return {"Road": c.road, "Dirt": c.dirt, "wet": c.wet}
+	return {"Road": c.road, "Dirt": c.dirt, "Gravel": c.gravel, "wet": c.wet}
 
-## 同上，但作用于已合成的环境配置（地图 env 文件可能覆盖过 road/dirt/wet）
+## 同上，但作用于已合成的环境配置（地图 env 文件可能覆盖过 road/dirt/gravel/wet）
 static func surface_mod_cfg(c: Dictionary) -> Dictionary:
-	return {"Road": float(c.road), "Dirt": float(c.dirt), "wet": bool(c.wet)}
+	return {"Road": float(c.road), "Dirt": float(c.dirt), "Gravel": float(c.gravel), "wet": bool(c.wet)}
 
 # ---------------- 地图 env 文件（与烘焙几何分离） ----------------
 

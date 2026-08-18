@@ -251,7 +251,7 @@ function defaultState(){
     meta: { id: 1, name: "Lakeside Highway" },
     width_default: 24,
     grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6 },
-    options: { walls: true, wall_height: 1.2, sample_step: 2 },
+    options: { walls: true, wall_height: 0.8, barrier_offset: 8, sample_step: 2 },
     routes: [
       { id: "main", surface: "road", points: [
         {x:0,   y:0, z:0,    width:null},
@@ -540,6 +540,36 @@ function drawRoad(ctx, route, ri){
   const isDirt = route.surface === "dirt";
   const base = isDirt ? "hsl(28,35%,32%)" : "hsl(225,8%,23%)";
   const sm = b.samples;
+  // 砂石路肩 + 外退护栏(主路;近似预览——岔口开缺由 Godot 端按走廊精确计算,
+  // 随后绘制的 dirt 会覆盖交叉处)
+  if (!isDirt && S.options.walls){
+    const off = Math.max(0, S.options.barrier_offset || 0);
+    if (off > 0.05){
+      ctx.fillStyle = "hsl(38,14%,50%)";
+      for (let i = 0; i < sm.length-1; i++){
+        const a = sm[i], c = sm[i+1];
+        const na = normalOf(a), nc = normalOf(c);
+        for (const sgn of [1,-1]){
+          ctx.beginPath();
+          ctx.moveTo(w2sX(a.x+na.x*(a.width/2)*sgn), w2sY(a.z+na.z*(a.width/2)*sgn));
+          ctx.lineTo(w2sX(a.x+na.x*(a.width/2+off)*sgn), w2sY(a.z+na.z*(a.width/2+off)*sgn));
+          ctx.lineTo(w2sX(c.x+nc.x*(c.width/2+off)*sgn), w2sY(c.z+nc.z*(c.width/2+off)*sgn));
+          ctx.lineTo(w2sX(c.x+nc.x*(c.width/2)*sgn), w2sY(c.z+nc.z*(c.width/2)*sgn));
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      ctx.strokeStyle = "#3a3f46"; ctx.lineWidth = Math.max(1.5, cam.scale*0.5);
+      for (const sgn of [1,-1]){
+        ctx.beginPath();
+        for (let i = 0; i < sm.length; i++){
+          const p = sm[i], n = normalOf(p), w = (p.width/2+off)*sgn;
+          const X = w2sX(p.x+n.x*w), Y = w2sY(p.z+n.z*w);
+          i ? ctx.lineTo(X,Y) : ctx.moveTo(X,Y);
+        }
+        ctx.stroke();
+      }
+    }
+  }
   // 分段四边形(支持高度着色)
   for (let i = 0; i < sm.length-1; i++){
     const a = sm[i], c = sm[i+1];
@@ -1115,8 +1145,10 @@ function refreshPanel(){
 
     <h3>生成选项</h3>
     <div class="frow"><label>采样步长 m</label><input type="number" step="0.5" min="0.5" id="pOs" value="${o.sample_step}"></div>
-    <div class="frow"><label>侧墙</label><input type="checkbox" id="pOw" ${o.walls ? "checked" : ""}></div>
-    <div class="frow"><label>墙高 m</label><input type="number" step="0.1" id="pOwh" value="${o.wall_height}"></div>
+    <div class="frow"><label>护栏</label><input type="checkbox" id="pOw" ${o.walls ? "checked" : ""}></div>
+    <div class="frow"><label>护栏高 m</label><input type="number" step="0.1" min="0.3" id="pOwh" value="${o.wall_height}"></div>
+    <div class="frow"><label>护栏退距 m</label><input type="number" step="0.5" min="0" id="pOb" value="${o.barrier_offset ?? 8}"></div>
+    <div style="color:var(--dim);font-size:11px;">护栏退离路缘,之间为砂石路肩(驶入减速惩罚);护栏碰撞面远高于视觉,防飞出。</div>
 
     <h3>完赛预估</h3>
     <div class="frow"><label>车辆</label><select id="pCar" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:3px 6px;border-radius:3px;font-size:12px;">${carTable.map(c => `<option value="${c.id}" ${c.id === selCarId ? "selected" : ""}>${c.name}(${c.top_speed}km/h)</option>`).join("")}</select></div>
@@ -1172,7 +1204,8 @@ function bindPanel(){
   bind("pGf", el => S.grid.first_row_offset = parseFloat(el.value) || 6);
   bind("pOs", el => S.options.sample_step = Math.max(0.5, parseFloat(el.value) || 2));
   bind("pOw", el => S.options.walls = el.checked);
-  bind("pOwh", el => S.options.wall_height = parseFloat(el.value) || 1.2);
+  bind("pOwh", el => S.options.wall_height = Math.max(0.3, parseFloat(el.value) || 0.8));
+  bind("pOb", el => S.options.barrier_offset = Math.max(0, parseFloat(el.value) || 0));
 
   const carSel = $("pCar");
   if (carSel) carSel.addEventListener("change", e => {
@@ -1305,7 +1338,7 @@ function applyImported(d){
     meta: { id: d.meta?.id ?? 1, name: d.meta?.name ?? "Imported" },
     width_default: d.width_default ?? 24,
     grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6, ...(d.grid || {}) },
-    options: { walls: true, wall_height: 1.2, sample_step: 2, ...(d.options || {}) },
+    options: { walls: true, wall_height: 0.8, barrier_offset: 8, sample_step: 2, ...(d.options || {}) },
     routes: d.routes.map(r => ({ id: r.id, surface: r.surface || "road", points: r.points.map(p => ({ x: p.x||0, y: p.y||0, z: p.z||0, width: p.width ?? null })) })),
   };
   sel = { route: 0, pt: -1 };

@@ -11,7 +11,7 @@ const SAMPLE = {
   meta: { id: 1, name: "Lakeside Highway" },
   width_default: 24,
   grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6 },
-  options: { walls: true, wall_height: 1.2, sample_step: 2 },
+  options: { walls: true, wall_height: 0.8, barrier_offset: 8, sample_step: 2 },
   routes: [
     { id: "main", surface: "road", points: [
       {x:0,   y:0, z:0,    width:null},
@@ -151,7 +151,7 @@ if (args.length === 0){
     const { json, anchorIdx } = bakeTrack({
       meta: S.meta, width_default: S.width_default,
       grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6, ...S.grid },
-      options: { walls: true, wall_height: 1.2, sample_step: 2, ...S.options },
+      options: { walls: true, wall_height: 0.8, barrier_offset: 8, sample_step: 2, ...S.options },
       routes: S.routes,
     });
     writeFileSync(src, JSON.stringify(json, null, 1));

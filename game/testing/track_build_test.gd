@@ -68,10 +68,45 @@ func _ready() -> void:
 	builder.build(data)
 	builder.setup(WeatherEnv.cfg(WeatherEnv.Type.SUNNY))
 	ok(builder.get_node_or_null("FinishGate") != null, "FinishGate 生成")
-	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+墙)" % get_tree().get_nodes_in_group("Road").size())
+	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+护栏)" % get_tree().get_nodes_in_group("Road").size())
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())
 	ok(get_tree().get_nodes_in_group("Grass").size() >= 1, "Grass 组 %d 个" % get_tree().get_nodes_in_group("Grass").size())
+	ok(get_tree().get_nodes_in_group("Gravel").size() >= 1, "Gravel 组 %d 个(砂石路肩)" % get_tree().get_nodes_in_group("Gravel").size())
 	ok(builder.junctions.size() == 4, "岔口融合 %d 处(4 个 dirt 端头均衔主路)" % builder.junctions.size())
+
+	# --- 外退式护栏:退离路缘 + 视觉低矮 + 碰撞面远高于视觉 ---
+	# 退距下限 0.9:急弯内侧按曲率夹到 CURVE_INNER_MIN(发卡弯 R<half 时必须收紧
+	# 防偏移线自交);发卡弯附近最近投影会串到另一条腿,故另加主体占比断言
+	var walls: StaticBody3D = builder.get_node_or_null("Walls") as StaticBody3D
+	ok(walls != null, "护栏生成")
+	if walls != null:
+		var wmi: MeshInstance3D = walls.get_child(1)
+		var wverts: PackedVector3Array = wmi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		# 退距下限 0.3:急弯/邻腿贴近处按远端路面走廊收紧(可低至 OFFSET_SKIP=0.4),
+		# 发卡弯汇合弯心整段不放;护栏与路面走廊的硬约束在"任何顶点不得在路面内"断言
+		var setback_bad := 0
+		var vis_bad := 0
+		var near_off := 0
+		for v in wverts:
+			var lat: Dictionary = data.main_lateral(v)
+			var sb: float = float(lat["dist"]) - float(lat["half"])
+			var vh: float = v.y - float(lat["road_y"])
+			if sb < 0.3 or sb > 11.0:
+				setback_bad += 1
+			if sb >= 6.5 and sb <= 9.5:
+				near_off += 1
+			if vh < -0.3 or vh > 0.95:
+				vis_bad += 1
+		ok(wverts.size() > 0 and setback_bad == 0, "护栏退距带 0.3~11m(越界 %d/%d)" % [setback_bad, wverts.size()])
+		ok(near_off > wverts.size() * 0.85, "护栏主体退距 ≈8m(%.0f%% 在 6.5~9.5m)" % (100.0 * near_off / wverts.size()))
+		ok(vis_bad == 0, "视觉护栏低矮(≤0.95m,越界 %d)" % vis_bad)
+		var wshape: ConcavePolygonShape3D = (walls.get_child(0) as CollisionShape3D).shape
+		var col_top := -1e9
+		for v in wshape.get_faces():
+			var lat: Dictionary = data.main_lateral(v)
+			col_top = maxf(col_top, v.y - float(lat["road_y"]))
+		ok(col_top > 3.5, "护栏碰撞墙远高于视觉(碰撞顶高 %.1fm vs 视觉 0.8m)" % col_top)
+
 	var has_trimesh := false
 	for group in ["Road", "Dirt"]:
 		for n in get_tree().get_nodes_in_group(group):

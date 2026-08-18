@@ -10,10 +10,13 @@ const LOOKAHEAD_VSHIFT := 0.55  # AI 前瞻时间(秒)对应距离系数
 
 var meta := {"id": 0, "name": ""}
 var grid_cfg := {"count": 8, "row_gap": 8.0, "col_gap": 7.0, "first_row_offset": 6.0}
-var options := {"walls": true, "wall_height": 1.2}
+var options := {"walls": true, "wall_height": 0.8, "barrier_offset": 8.0, "sample_step": 2}
 var routes: Array = []   # [{id, surface, pts, tans, widths, s_arr, radii}]
 var main: Dictionary = {}
 var length := 0.0
+## 检查点弧长序列(R 倒转复位目标):首点=起点线,间隔来自 Game 表
+## checkpoint_interval,build_checkpoints 按 RaceManager 注入的间隔生成
+var checkpoints := PackedFloat32Array()
 ## 起点线采样索引:编辑器烘焙时主路前插了发车引道(发车网格要落在铺装上),
 ## 真正的起点线在 grid.anchor_s 处,发车位/起点柱/AI 车道都锚定在那里。
 var start_idx := 0
@@ -111,17 +114,21 @@ func _compute_radii(route: Dictionary) -> void:
 		radii[i] = minf(9999.0, la * lb * lc / absf(cross))
 	route["radii"] = radii
 
-## 任意点相对主路的横向信息(xz 投影到最近段求精确垂距)。
+## 任意点相对主路的横向信息(辅路岔口融合/护栏开缺等均用它),字段见 route_lateral
+func main_lateral(pos: Vector3) -> Dictionary:
+	return route_lateral(main, pos)
+
+## 任意点相对某条路由的横向信息(xz 投影到最近段求精确垂距)。
 ## 返回 {dist: 到中心线垂距(非负), half: 垂足处半宽, road_y: 垂足处路面高度,
 ##       s: 垂足弧长, foot: 垂足坐标}。辅路岔口融合(TrackBuilder)用。
-func main_lateral(pos: Vector3) -> Dictionary:
-	var pts: PackedVector3Array = main["pts"]
+func route_lateral(route: Dictionary, pos: Vector3) -> Dictionary:
+	var pts: PackedVector3Array = route["pts"]
 	var n := pts.size()
 	if n == 0:
 		return {"dist": 1e9, "half": 12.0, "road_y": 0.0, "s": 0.0, "foot": Vector3.ZERO}
-	var widths: PackedFloat32Array = main["widths"]
-	var s_arr: PackedFloat32Array = main["s_arr"]
-	var idx := nearest_index(pos, -1)
+	var widths: PackedFloat32Array = route["widths"]
+	var s_arr: PackedFloat32Array = route["s_arr"]
+	var idx := nearest_index(pos, -1, route)
 	var best_d := 1e18
 	var best_a := idx
 	var best_b := idx
@@ -287,6 +294,40 @@ func grid_heading(_grid_no: int) -> float:
 func grid_lane(grid_no: int) -> float:
 	var side := -1.0 if grid_no % 2 == 1 else 1.0
 	return side * float(grid_cfg.get("col_gap", 7.0)) * 0.5
+
+## ---------------- 检查点(R 倒转复位用) ----------------
+
+const CHECKPOINT_DROP_Y := 1.2  # 复位落点在路面之上的悬空量(与 reset_point 一致,落地自沉降)
+const CHECKPOINT_TAIL_MARGIN := 10.0  # 距终点不足该值不再生成检查点(冲线前无倒转价值)
+
+## 按配表间隔沿主路生成检查点弧长序列:首点=起点线(start_idx 采样),之后每隔
+## interval 米一个,直到终点前 CHECKPOINT_TAIL_MARGIN。地图加载后由 RaceManager
+## 注入间隔(Game 表 checkpoint_interval),幂等可重建。
+func build_checkpoints(interval: float) -> void:
+	checkpoints = PackedFloat32Array()
+	if interval <= 0.0 or length <= 0.0:
+		return
+	var s_arr: PackedFloat32Array = main["s_arr"]
+	var s0: float = s_arr[start_idx]
+	checkpoints.append(s0)
+	var s := s0 + interval
+	while s < length - CHECKPOINT_TAIL_MARGIN:
+		checkpoints.append(s)
+		s += interval
+
+## 检查点复位姿态:{pos: 路面上方悬空点, yaw: 车头朝向弧长切线, s: 弧长}。
+## 未生成检查点时返回空 dict,调用方须判空。
+func checkpoint_pose(idx: int) -> Dictionary:
+	if checkpoints.is_empty():
+		return {}
+	var i := clampi(idx, 0, checkpoints.size() - 1)
+	var s: float = checkpoints[i]
+	var t := tangent_at(s)
+	return {
+		"pos": point_at(s) + Vector3(0, CHECKPOINT_DROP_Y, 0),
+		"yaw": atan2(-t.x, -t.z),
+		"s": s,
+	}
 
 ## ---------------- 掉落 / 辅助 ----------------
 

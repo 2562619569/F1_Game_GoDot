@@ -45,31 +45,38 @@ static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, env: Dictionar
 	v.inertia_multiplier = float(cfg.inertia_multiplier)
 	v.coefficient_of_drag = maxf(0.12, float(cfg.coefficient_of_drag) + stats.aero * K_AERO_DRAG)
 
-	# --- 轮胎（表面键固定 Road/Dirt/Grass，与赛道碰撞体分组对应）---
+	# --- 轮胎（表面键固定 Road/Dirt/Gravel/Grass，与赛道碰撞体分组对应）---
+	# Gravel = 路缘与外退护栏之间的砂石路肩：摩擦低于 Dirt、滚阻接近 Grass，
+	# 驶入即受罚（冲出铺装的代价），grip_offroad 改件可小幅缓解。
 	var w := WeatherEnv.surface_mod_cfg(env)
 	var road: float = 3.0 * (1.0 + stats.grip_road * K_GRIP_ROAD) * w.Road
 	var dirt: float = 2.4 * (1.0 + stats.grip_offroad * K_GRIP_OFFROAD) * w.Dirt
+	var gravel: float = 1.9 * (1.0 + stats.grip_offroad * K_GRIP_OFFROAD * 0.8) * w.Gravel
 	var grass: float = 2.0 * (1.0 + stats.grip_offroad * K_GRIP_OFFROAD * 0.6)
 	if w.wet:  # 雨胎只在湿滑天气生效
 		road += stats.grip_wet * K_GRIP_WET
 		dirt += stats.grip_wet * 0.02
+		gravel += stats.grip_wet * 0.02
 		grass += stats.grip_wet * 0.02
 	var downforce := maxf(0.0, stats.aero)
 	road += downforce * K_AERO_GRIP
 	dirt += downforce * K_AERO_GRIP * 0.5
+	gravel += downforce * K_AERO_GRIP * 0.35
 	grass += downforce * K_AERO_GRIP * 0.25
-	v.coefficient_of_friction = {"Road": road, "Dirt": dirt, "Grass": grass}
+	v.coefficient_of_friction = {"Road": road, "Dirt": dirt, "Gravel": gravel, "Grass": grass}
 	# 轮胎刚度标度重校（与 vehicle.gd 同步）：旧 Road 10 → 峰值滑移角 ~0.4°，
 	# 抓地是开关式的，无渐进手感；新值按峰值滑移角 ~4°（完全饱和 ~12°）标定，
 	# 推头/甩尾有可感知的渐进区。松软路面刚度更低 → 滑移行程更长、更漂。
 	v.tire_stiffnesses = {
 		"Road": 0.3 * (1.0 + stats.grip_road * 0.01),
 		"Dirt": 0.2 * (1.0 + stats.grip_offroad * 0.01),
+		"Gravel": 0.18 * (1.0 + stats.grip_offroad * 0.01),
 		"Grass": 0.15,
 	}
 	v.rolling_resistance = {
 		"Road": 1.0 * (1.0 - downforce * 0.01),
 		"Dirt": 2.0 * (1.0 - stats.grip_offroad * 0.01),
+		"Gravel": 3.2 * (1.0 - stats.grip_offroad * 0.008),
 		"Grass": 4.0,
 	}
 

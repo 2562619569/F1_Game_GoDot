@@ -121,7 +121,7 @@ def default_map_template(meta):
         "meta": {"id": meta["id"], "name": meta["name"]},
         "width_default": 24,
         "grid": {"count": 8, "row_gap": 8, "col_gap": 7, "first_row_offset": 6},
-        "options": {"walls": True, "wall_height": 1.2, "sample_step": 2},
+        "options": {"walls": True, "wall_height": 0.8, "barrier_offset": 8, "sample_step": 2},
         "routes": [
             {
                 "id": "main",

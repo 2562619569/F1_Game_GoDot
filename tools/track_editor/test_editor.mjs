@@ -89,6 +89,9 @@ ok(Array.isArray(bm) && bm.length > 200, "烘焙主路采样点 " + bm.length + 
 ok(bm.every(p => Array.isArray(p) && p.length === 4), "采样点为 4 元素数组 [x,y,z,width](切线/弧长由 Godot 重建)");
 ok(exported.grid.anchor_s === 36, "导出含发车引道锚点 anchor_s=" + exported.grid.anchor_s);
 ok(exported.grid.count === 8, "发车格满编 8 格(count=" + exported.grid.count + ")");
+ok(exported.options.walls === true && exported.options.barrier_offset === 8,
+    "导出护栏选项:退距 " + exported.options.barrier_offset + "m(路缘与护栏间为砂石路肩)");
+ok(Math.abs(exported.options.wall_height - 0.8) < 1e-9, "护栏视觉高 0.8m(低矮,碰撞面由引擎端加高)");
 ok(Math.abs(bm[0][2] - 36) < 0.6, "引道尾端在起点线后方 36m(z=" + bm[0][2].toFixed(2) + ",首段朝 -z)");
 ok(Math.abs(bm[Math.round(exported.grid.anchor_s / 2)][0]) < 0.1 && Math.abs(bm[Math.round(exported.grid.anchor_s / 2)][2]) < 0.1,
     "anchor 处采样即起点线 (0,0)");
