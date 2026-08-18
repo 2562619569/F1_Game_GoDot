@@ -76,6 +76,18 @@ func _run() -> void:
 		if c is CanvasLayer and (c as CanvasLayer).layer == 10:
 			overlay = c
 	ok(overlay != null and overlay.get_child_count() == 1, "garage overlay layer composited full-screen")
+	# 组合过渡 shader：车库层光带扫描 + 全屏径向变焦（盖在其上）
+	var sweep_mat: ShaderMaterial = (overlay.get_child(0) as Control).material as ShaderMaterial \
+			if overlay != null and overlay.get_child(0) is Control else null
+	ok(sweep_mat != null and sweep_mat.shader.resource_path.ends_with("garage_sweep.gdshader"),
+			"garage layer uses sweep shader")
+	var rush_layer := null
+	for c in main.get_children():
+		if c is CanvasLayer and (c as CanvasLayer).layer == 11:
+			rush_layer = c
+	ok(rush_layer != null and rush_layer.get_child_count() == 1
+			and (rush_layer.get_child(0) as Control).material is ShaderMaterial,
+			"full-screen zoom-rush layer above garage layer")
 
 	# ---- 主视口相机：起始机位 = 车库相机位姿应用到发车位（两层车重合） ----
 	var pv: Vehicle = main.race.player_racer.vehicle
@@ -102,15 +114,22 @@ func _run() -> void:
 			"garage layer camera locked to main camera (d=%.3fm)" \
 					% moved_stage.camera.global_position.distance_to(expect_layer.origin))
 	ok(absf(moved_stage.camera.fov - cam.fov) < 0.01, "garage layer FOV synced")
+	var sweep_progress := float(sweep_mat.get_shader_parameter("progress"))
+	await get_tree().create_timer(0.15).timeout
+	var sweep_progress2 := float(sweep_mat.get_shader_parameter("progress")) \
+			if is_instance_valid(sweep_mat) else 1.0
+	ok(sweep_progress >= 0.0 and sweep_progress2 > sweep_progress,
+			"transition shader progress advances with camera flight (%.2f -> %.2f)" \
+					% [sweep_progress, sweep_progress2])
 
 	# ---- 过渡结束：车库层释放、追尾相机在收敛位、HUD 淡入、倒计时放行 ----
 	ok(await until(func(): return not main.race.countdown_hold), "countdown released after transition")
 	ok(main._garage_host == null, "garage host freed after transition")
 	var layer_gone := true
 	for c in main.get_children():
-		if c is SubViewport or (c is CanvasLayer and (c as CanvasLayer).layer == 10):
+		if c is SubViewport or (c is CanvasLayer and ((c as CanvasLayer).layer == 10 or (c as CanvasLayer).layer == 11)):
 			layer_gone = false
-	ok(layer_gone, "garage SubViewport and overlay freed after transition")
+	ok(layer_gone, "garage SubViewport/overlay/rush layers freed after transition")
 	var dist := float(cam.follow_distance)
 	var height := float(cam.follow_height)
 	var rest := spawn.origin + Vector3(spawn.basis.z.x, 0, spawn.basis.z.z).normalized() * dist

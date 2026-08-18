@@ -91,8 +91,11 @@ func _clear_showroom() -> void:
 
 # ---------------- 回合循环 ----------------
 
-## 车库→赛道过渡时长（秒）：相机飞行；车库层透明度逐帧跟随相机缓动进度
+## 车库→赛道过渡时长（秒）：相机飞行；两层过渡 shader 的 progress 与相机
+## 缓动进度共用同一条曲线，相机没动效果不走
 const GARAGE_TRANSITION_SEC := 3.5
+const SweepShader := preload("res://game/shaders/garage_sweep.gdshader")
+const ZoomRushShader := preload("res://game/shaders/zoom_rush.gdshader")
 
 var _garage_host: Node = null      # 过渡期间保留的选车/局间宿主场景（展台在其中）
 
@@ -142,8 +145,9 @@ func _begin_garage_transition() -> CarStage:
 ##    车库世界，FOV 同步）——飞行全程两层画面里的车严格锁定，车库墙随
 ##    视角正确扫过，交叉溶解任何时刻都严丝合缝，不依赖首帧换算的精度。
 ## 4. 相机向追尾静止收敛位飞行（位置插值 + 姿态 slerp + FOV 收敛，
-##    QUINT 缓动），同期车库叠加层透明淡出，赛道显露。后续要加效果
-##    （模糊/遮罩/辉光）只需对叠加层或 SubViewport 加工。
+##    QUINT 缓动）。组合过渡效果与相机共用同一缓动进度接力：车库层挂
+##    光带扫描 shader（前段，扫过处溶解露出赛道、辉光贴车库边缘），
+##    其上全屏径向变焦 shader（中后段，屏幕纹理放射拖影冲刺感）。
 ## 5. 结束：恢复追尾相机物理更新（终点即其静止牵引目标，零跳变），
 ##    HUD 淡入、倒计时放行、车库层与宿主场景释放。
 func _transition_garage_to_race(stage: CarStage) -> void:
@@ -173,7 +177,24 @@ func _transition_garage_to_race(stage: CarStage) -> void:
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	# 光带扫描：扫过处车库层溶解露出赛道，辉光贴着车库几何边缘
+	var sweep_mat := ShaderMaterial.new()
+	sweep_mat.shader = SweepShader
+	rect.material = sweep_mat
 	overlay.add_child(rect)
+
+	# 径向变焦（speed rush）：全屏屏幕纹理放射拖影，盖在车库层之上，
+	# 中段起量呼应相机加速（扫描起步 → 变焦冲刺 的接力节奏）
+	var rush_layer := CanvasLayer.new()
+	rush_layer.layer = 11
+	add_child(rush_layer)
+	var rush_mat := ShaderMaterial.new()
+	rush_mat.shader = ZoomRushShader
+	var rush := ColorRect.new()
+	rush.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rush.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rush.material = rush_mat
+	rush_layer.add_child(rush)
 
 	# --- 主视口相机：追尾相机暂停物理，从车库等价机位飞向静止收敛位 ---
 	var cam := race.chase_camera
@@ -186,6 +207,10 @@ func _transition_garage_to_race(stage: CarStage) -> void:
 	cam.global_transform = start_xf
 	cam.fov = start_fov
 	cam.make_current()
+
+	# 变焦拖影消失点 = 起始机位下车身在屏幕上的位置；宽高比纠正放射方向
+	rush_mat.set_shader_parameter("center", cam.unproject_position(spawn.origin) / sub.size)
+	rush_mat.set_shader_parameter("aspect", sub.size.x / maxf(sub.size.y, 1.0))
 
 	# 车库层相机锁定映射：车库相机 = 展车位姿 * 发车位⁻¹ * 主相机
 	# （入层后取一次展车在层内世界的位姿作锚，之后每帧套用）
@@ -202,11 +227,12 @@ func _transition_garage_to_race(stage: CarStage) -> void:
 				start_xf.origin.lerp(end_xf.origin, w))
 		cam.fov = lerpf(start_fov, end_fov, w)
 		_sync_layer_camera(layer_cam, layer_car_xf, spawn_inv, cam)
-		# 淡出与相机共用同一缓动进度：车库层透明度逐帧 = 1 - 相机进度，
-		# 相机没动车库不淡，相机到位车库正好淡完
-		rect.modulate.a = 1.0 - w, 0.0, 1.0, GARAGE_TRANSITION_SEC) \
+		# 两个过渡 shader 与相机共用同一缓动进度：相机没动效果不走，
+		# 扫描（前段）与变焦（中后段）接力，相机到位效果正好收干净
+		sweep_mat.set_shader_parameter("progress", w)
+		rush_mat.set_shader_parameter("progress", w), 0.0, 1.0, GARAGE_TRANSITION_SEC) \
 		.set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
-	tw.tween_callback(_finish_garage_transition.bind(sub, overlay))
+	tw.tween_callback(_finish_garage_transition.bind(sub, overlay, rush_layer))
 
 ## 把主相机位姿按 发车位→展车 映射搬进车库层并同步 FOV：
 ## 保证叠加层画面与主视口里的车逐帧严格重合
@@ -215,12 +241,13 @@ func _sync_layer_camera(layer_cam: Camera3D, layer_car_xf: Transform3D,
 	layer_cam.global_transform = layer_car_xf * spawn_inv * cam.global_transform
 	layer_cam.fov = cam.fov
 
-func _finish_garage_transition(sub: SubViewport, overlay: CanvasLayer) -> void:
+func _finish_garage_transition(sub: SubViewport, overlay: CanvasLayer, rush_layer: CanvasLayer) -> void:
 	if is_instance_valid(hud):
 		create_tween().tween_property(hud, "modulate:a", 1.0, 0.6)
 	if _garage_host != null:
 		_garage_host.queue_free()
 		_garage_host = null
+	rush_layer.queue_free()
 	overlay.queue_free()
 	sub.queue_free()
 	if not is_instance_valid(race) or race.chase_camera == null:
