@@ -238,17 +238,31 @@ func roll_rarity(rarity_weights: Array, guarantee := 0) -> int:
 			break
 	return maxi(rarity, guarantee)
 
-## 在类别池里按稀有度抽一件（稀有度不足时向上取最近的）
+## 在类别池里按稀有度抽一件（类别内稀有度不足时向下夹到该类别最高档，
+## 使 Loot 表的 guarantee_rarity 保底不会被回退打破）
 func roll_part(category: String, min_rarity := 1) -> int:
 	var candidates: Array = []
-	var fallback: Array = []
+	for p in Settings.part.data.values():
+		if p.category == category and p.rarity >= min_rarity:
+			candidates.append(p.id)
+	if candidates.is_empty():
+		candidates = _parts_at_max_rarity(category)
+	if candidates.is_empty():
+		push_warning("Part 表缺少类别: %s" % category)
+		return 0
+	return candidates.pick_random()
+
+## 类别内最高稀有度档的全部部件 id（roll_part 空回退夹档用）
+func _parts_at_max_rarity(category: String) -> Array:
+	var max_r := 0
 	for p in Settings.part.data.values():
 		if p.category == category:
-			fallback.append(p.id)
-			if p.rarity >= min_rarity:
-				candidates.append(p.id)
-	var pool := candidates if candidates.size() > 0 else fallback
-	return pool.pick_random()
+			max_r = maxi(max_r, int(p.rarity))
+	var out: Array = []
+	for p in Settings.part.data.values():
+		if p.category == category and int(p.rarity) == max_r and max_r > 0:
+			out.append(p.id)
+	return out
 
 ## 按 Loot 表生成一条路线的掉落改件 id 列表
 func roll_route_drops(route: String) -> Array:

@@ -87,11 +87,15 @@ static func _spawn_loot(race: RaceManager, track: Node3D, loot_cb: Callable) -> 
 	for route in ["main", "hazard"]:
 		var pids: Array = Match.roll_route_drops(route)
 		var pts: Array = track.main_route_points(pids.size()) if route == "main" else track.hazard_route_points()
+		if pts.is_empty():
+			continue
 		for i in pids.size():
+			if int(pids[i]) < 1:
+				continue  # 类别缺失时 roll_part 的防御返回，跳过无效掉落
 			var loot := LOOT_SCENE.instantiate()
 			loot.position = pts[i % pts.size()]
 			race.add_child(loot)
-			loot.setup(pids[i], route)
+			loot.setup(int(pids[i]), route)
 			loot.collected.connect(loot_cb)
 
 static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackData, racers: Array[Racer]) -> Racer:

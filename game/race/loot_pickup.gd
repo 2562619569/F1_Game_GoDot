@@ -29,6 +29,7 @@ func setup(pid: int, r: String) -> void:
 	_light.omni_range = 3.0 + int(p.rarity)
 
 func _ready() -> void:
+	($Shape.shape as SphereShape3D).radius = Match.game_cfg("loot_pick_radius")
 	body_entered.connect(_on_body)
 	monitoring = true
 
