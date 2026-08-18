@@ -148,9 +148,26 @@ extends RigidBody3D
 @export var shift_rev_fall_response := 0.1
 ## Enables automatic gear changes
 @export var automatic_transmission := true
-## Timer to prevent the automatic gear shifts changing gears too quickly 
+## Timer to prevent the automatic gear shifts changing gears too quickly
 ## in milliseconds
 @export var automatic_time_between_shifts := 1000.0
+
+## --- 自动换挡线（均占红线 max_rpm 的比例）---
+## 全油门升挡点取 0.95：长上坡的阻力平衡点常贴在红线下方（如 601 的 5 挡在 7%
+## 坡平衡在 0.97 红线），严格 ">max_rpm" 永远差一点而卡挡（加速停滞且不换挡）；
+## 该点已越过功率峰（扭矩曲线峰值 0.62、功率峰约 0.93 红线），提前升挡不损失加速。
+const AUTO_UPSHIFT_MAX := 0.95
+## 小油门升挡点：油门越浅升挡越早，巡航不拖到红线才换挡。
+const AUTO_UPSHIFT_MIN := 0.45
+## 油门低于该值时按该值计算升挡线，松油滑行不过早升挡而丢失拽挡制动。
+const AUTO_COAST_THROTTLE := 0.30
+## 降挡线 = 升挡线 × 该比例（随油门一起缩放，保证升降挡之间有迟滞不振荡）。
+const AUTO_DOWNSHIFT_RATIO := 0.72
+## 地板油踢降（kickdown）：降到低一挡后转速不超过该红线比例（防超转），
+## 且仅当当前转速明显低于升挡线（闷挡无力）时触发。必须低于 AUTO_UPSHIFT_MAX，
+## 否则全油门刚升完挡（低一挡转速=升挡线）就会被立刻踢回去。
+const AUTO_KICKDOWN_THROTTLE := 0.85
+const AUTO_KICKDOWN_RPM := 0.92
 ## Drivetrain inertia
 @export var gear_inertia := 0.02
 
@@ -882,22 +899,29 @@ func process_transmission() -> void:
 			var previous_gear_rpm := 0.0
 			if current_gear - 1 > 0:
 				previous_gear_rpm = get_gear_ratio(current_gear - 1) * maxf(drivetrain_spin, ideal_wheel_spin) * ANGULAR_VELOCITY_TO_RPM
-			
-			
+
+			## 换挡线随油门深度缩放：全油门贴近红线（留余量防卡挡），小油门提前升挡
+			var shift_throttle := clampf(maxf(throttle_amount, AUTO_COAST_THROTTLE), 0.0, 1.0)
+			var upshift_rpm := max_rpm * lerpf(AUTO_UPSHIFT_MIN, AUTO_UPSHIFT_MAX, shift_throttle)
+			var downshift_rpm := upshift_rpm * AUTO_DOWNSHIFT_RATIO
+
 			if current_gear < gear_ratios.size():
 				if current_gear > 0:
-					if current_ideal_gear_rpm > max_rpm:
-						if delta_time - last_shift_delta_time > shift_time:
+					if delta_time - last_shift_delta_time > shift_time:
+						if current_ideal_gear_rpm > upshift_rpm:
 							shift(1)
-					if current_ideal_gear_rpm > max_rpm * 0.8 and current_real_gear_rpm > max_rpm:
-						if delta_time - last_shift_delta_time > shift_time:
+						elif current_ideal_gear_rpm > upshift_rpm * 0.8 and current_real_gear_rpm > upshift_rpm:
 							shift(1)
 				elif current_gear == 0 and motor_rpm > maxf(clutch_out_rpm, idle_rpm):
 					shift(1)
 			if current_gear - 1 > 0:
-				if current_gear > 1 and previous_gear_rpm < 0.75 * max_rpm:
-					if delta_time - last_shift_delta_time > shift_time:
-						shift(-1)
+				if current_gear > 1:
+					## 地板油踢降：放宽降挡线（只要降挡后不超转），出弯再加速不闷高挡
+					var kickdown := throttle_amount > AUTO_KICKDOWN_THROTTLE \
+							and current_ideal_gear_rpm < upshift_rpm * 0.9
+					if previous_gear_rpm < (max_rpm * AUTO_KICKDOWN_RPM if kickdown else downshift_rpm):
+						if delta_time - last_shift_delta_time > shift_time:
+							shift(-1)
 		
 		if absf(current_gear) <= 1 and brake_input > 0.75:
 			if not reversing:
