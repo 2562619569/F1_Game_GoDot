@@ -163,7 +163,7 @@ func _transition_garage_to_race(stage: CarStage) -> void:
 	var sub := SubViewport.new()
 	sub.own_world_3d = true
 	sub.transparent_bg = true
-	sub.size = get_viewport().get_visible_rect().size
+	sub.size = Vector2i(get_viewport().get_visible_rect().size)
 	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(sub)
 	_garage_host.remove_child(stage)
@@ -209,7 +209,7 @@ func _transition_garage_to_race(stage: CarStage) -> void:
 	cam.make_current()
 
 	# 变焦拖影消失点 = 起始机位下车身在屏幕上的位置；宽高比纠正放射方向
-	rush_mat.set_shader_parameter("center", cam.unproject_position(spawn.origin) / sub.size)
+	rush_mat.set_shader_parameter("center", cam.unproject_position(spawn.origin) / Vector2(sub.size))
 	rush_mat.set_shader_parameter("aspect", sub.size.x / maxf(sub.size.y, 1.0))
 
 	# 车库层相机锁定映射：车库相机 = 展车位姿 * 发车位⁻¹ * 主相机
