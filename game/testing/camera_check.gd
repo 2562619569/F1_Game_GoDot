@@ -4,15 +4,16 @@ extends SceneTree
 ## 1. 匀速直线（20 m/s，-Z 前进）：相机悬在车后（+Z 侧），高度≈follow_height；
 ## 2. 动态 FOV：中速抬升、高速逼近 maximum_fov；
 ## 3. look_back 动作：相机甩到车头侧，松开回到车尾侧；
-## 4. trigger_shake：震屏计时器启动且不报错；
+## 4. impact_kick（Shaker 方向性脉冲）：哑元偏移沿撞击方向甩出（峰值后回落）；
 ## 5. 转向方波（模拟键盘 A/D 阶跃）+ 急甩头：相机逐帧姿态变化被低通压住，
 ##    且静置后视线仍收敛于车身（平滑不牺牲跟随）；
 ## 6. 视角模式：cycle 到追尾近参数按比例收紧；引擎盖/保险杠刚性锚定车身
 ##    （车前/高于原点/偏移量精确等于锚点长度/视线随车头、look_back 后翻），
 ##    保险杠锚点比引擎盖更靠前更低；切回追尾远恢复基准参数；
 ## 7. 环视：orbit_look 侧向甩头后相机横移到车身侧，松手指数回正归零；
-## 8. 持续震动源：巡航(20 m/s)三源全零，重刹+侧滑叠加为正，纯高速为正；
-## 9. 震动总开关：shake_enabled=false 时持续源不产生偏移、trigger_shake 不启动。
+## 8. 持续震动源：巡航(20 m/s)三源全零，重刹+侧滑叠加为正，纯高速为正，
+##    且强度写入 Brownian 幅度、哑元上产生实际偏移；
+## 9. 震动总开关：shake_enabled=false 时持续源幅度归零、impact_kick 被忽略。
 ## 目标用冻结刚体（可设 linear_velocity/steering/brake_input/local_velocity），
 ## physics_frame 回调晚于相机 _physics_process，故用 call_deferred 对齐
 ## "刚体先动、相机后读"的真实时序。探针无视觉网格，刚性锚点走回退车盒。
@@ -34,6 +35,8 @@ var _last_fwd := Vector3.FORWARD
 var _have_meas := false
 var max_roll_step := 0.0
 var max_fwd_step := 0.0
+var _kick_dir := Vector3.ZERO
+var _kick_peak := 0.0
 
 func _init() -> void:
 	delta_p = 1.0 / float(Engine.physics_ticks_per_second)
@@ -104,11 +107,19 @@ func _on_phys() -> void:
 		ok(cam.global_position.z > target.global_position.z, "camera returns behind after look_back")
 		ok(cam.fov > 80.0, "FOV near max at 40 m/s (%.1f, want ≈85)" % cam.fov)
 
-	# ---- 4. 震屏 ----
-	if tick == 380:
-		cam.trigger_shake(0.3, 0.15)
-	if tick == 381:
-		ok(cam._shake_timer > 0.0, "trigger_shake starts shake timer")
+	# ---- 4. 碰撞脉冲（Shaker 方向性 kick）。测试桩里组件 timer 以约半速推进
+	# （headless process 帧节奏），kick 时长压到 0.12s≈15 tick，止于 400 起的
+	# 平滑测量窗口之前 ----
+	if tick == 372:
+		cam.kick_duration = 0.12
+		_kick_dir = Vector3(0.5, 0.1, 0.8).normalized()
+		cam.impact_kick(_kick_dir, 0.3)
+	if tick >= 372 and tick < 398:
+		_kick_peak = maxf(_kick_peak, cam._shake_target.position.dot(_kick_dir))
+	if tick == 398:
+		ok(_kick_peak > 0.05, "impact kick swings along impact dir (peak %.3f m)" % _kick_peak)
+		ok(cam._shake_target.position.length() < 0.01,
+				"impact kick decays to zero (%.4f m)" % cam._shake_target.position.length())
 
 	# ---- 5. 平滑性测量：转向方波 + 急甩头（跳过震屏期） ----
 	if tick >= 400 and tick <= 549:
@@ -201,6 +212,10 @@ func _on_phys() -> void:
 	if tick == 950:
 		var i2: float = cam._continuous_shake_intensity()
 		ok(i2 > 0.005 and i2 < 0.02, "high speed road rumble only (%.4f)" % i2)
+		ok(absf(cam._rumble_pos.amplitude.x - i2) < 1e-6,
+				"rumble intensity drives brownian amplitude (%.4f)" % cam._rumble_pos.amplitude.x)
+		ok(cam._shake_target.position.length() > 1e-4,
+				"brownian rumble reaches shake target (%.4f m)" % cam._shake_target.position.length())
 
 	# ---- 10. 震动总开关 ----
 	if tick == 960:
@@ -213,9 +228,13 @@ func _on_phys() -> void:
 		var off := (cam.global_position - car_prev).length()
 		ok(absf(off - cam._rigid_anchor.length()) < 1e-3,
 				"shake off: rigid cam stays exactly on anchor (%.6f)" % off)
-		# 门控断言：旧震屏衰减完 timer 停在小负残差（上游行为），未被触发即 ≤0
-		cam.trigger_shake(0.3, 0.25)
-		ok(cam._shake_timer <= 0.0, "shake off: trigger_shake ignored (%.4f)" % cam._shake_timer)
+		# 门控断言：impact_kick 被 shake_enabled 直接拒绝，不产生外挂震动
+		cam.impact_kick(Vector3.RIGHT, 0.3)
+		ok(cam._shaker._external_shakes.is_empty(),
+				"shake off: impact_kick ignored (no external queued)")
+	if tick == 969:
+		ok(cam._shake_target.position.length() < 1e-6,
+				"shake off: shake target stays zero (%.7f)" % cam._shake_target.position.length())
 		cam.shake_enabled = true
 		target.brake_input = 0.0
 		target.local_velocity = Vector3.ZERO

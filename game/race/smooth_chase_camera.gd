@@ -10,8 +10,13 @@ extends "res://addons/pro_vehicle_camera/pro_vehicle_camera.gd"
 ## 3. 环视：按住鼠标左键拖拽或手柄右摇杆（camera_look_* 动作）绕车环视，
 ##    松手指数回正；追尾模式旋转牵引方向（上游 orbit_yaw/orbit_pitch 钩子），
 ##    刚性模式直接旋转视线。
-## 4. 持续震动源：高速路面/重刹/漂移侧滑的常驻微震（碰撞脉冲仍走
-##    trigger_shake），shake_enabled 总开关同时门控两类（Game 表 cam_shake）。
+## 4. 震动走原版 Shaker 插件（addons/shaker，MIT，未改上游一行）：持续微震
+##    （高速路面/重刹/漂移侧滑）= 组件常驻 Brownian 随机游走 preset；碰撞
+##    脉冲 = impact_kick 方向性曲线甩动 + 白噪声旋转混乱。相机每物理帧被
+##    PVC/刚性锚定全量重写 transform，直接以相机为抖动目标会冲掉组件的
+##    "撤销上次偏移+叠加新偏移"差分机制，故组件 custom_target 指向哑元
+##    节点，物理帧末尾把哑元偏移叠到全局位姿（旧 _apply_continuous_shake
+##    的注入槽位）。shake_enabled 总开关同时门控两类（Game 表 cam_shake）。
 
 ## 朝向跟随刚度：越大越跟手，越小越"电影"（12 ≈ 80ms 时间常数）。
 @export var rotation_damp := 12.0
@@ -31,10 +36,19 @@ extends "res://addons/pro_vehicle_camera/pro_vehicle_camera.gd"
 @export_group("Shake Sources")
 ## 总开关（race_builder 注入 Game 表 cam_shake）：门控脉冲与持续两类震屏。
 @export var shake_enabled := true
-## 各源增益（米/帧随机偏移幅度 @120Hz）：高速路面 / 重刹 / 漂移侧滑。
+## 各源增益（持续微震动幅度，米）：高速路面 / 重刹 / 漂移侧滑。
 @export var shake_speed_gain := 0.010
 @export var shake_brake_gain := 0.020
 @export var shake_drift_gain := 0.022
+
+@export_group("Impact Kick")
+## 碰撞脉冲时长（秒）。
+@export var kick_duration := 0.30
+## 位移补偿：外挂震动 ease 包络（默认 0.25/0.25，x^0.25·(1-x)^0.25）中段
+## ≈0.7，乘回后峰值 ≈ 强度。
+@export var kick_gain := 1.4
+## 旋转混乱量级（rad / 米强度）：碰撞瞬态白噪声旋转的冲击感来源。
+@export var kick_rot_gain := 0.25
 
 enum ViewMode { CHASE_FAR, CHASE_NEAR, HOOD, BUMPER }
 
@@ -67,6 +81,10 @@ var _rigid_anchor := Vector3.ZERO   # 引擎盖/保险杠：车身空间锚点
 var _orbit_active := false   # 本物理帧有环视输入（无输入才回正）
 var _mouse_drag := false
 var _mouse_motion := Vector2.ZERO
+var _shaker: ShakerComponent3D = null   # Shaker 组件（抖哑元，见 _build_shaker）
+var _shake_target: Node3D = null   # 哑元：本地 transform 只被 Shaker 写，相机每帧读
+var _rumble_pos: ShakerTypeBrownianShake3D = null   # 持续微震两路游走，幅度由物理帧实时写
+var _rumble_rot: ShakerTypeBrownianShake3D = null
 
 func _ready() -> void:
 	super()
@@ -74,6 +92,7 @@ func _ready() -> void:
 	_base_height = follow_height
 	_chase_fov_min = minimum_fov
 	_chase_fov_max = maximum_fov
+	_build_shaker()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
@@ -94,7 +113,7 @@ func _physics_process(delta: float) -> void:
 		super(delta)   # 追尾：上游弹性牵引 + FOV + look_at + 侧倾 + 脉冲震屏
 	var weight := 1.0 - exp(-rotation_damp * delta)
 	global_transform.basis = _prev_basis.slerp(global_transform.basis, weight)
-	_apply_continuous_shake(delta)
+	_apply_shake(delta)
 
 # ---------------- 视角模式 ----------------
 
@@ -124,7 +143,7 @@ func _is_rigid() -> bool:
 
 ## 引擎盖/保险杠帧更新：位置刚性锚定车身（不做弹性牵引），朝向 = 车身朝向
 ## + look_back 翻转 + 环视偏移（俯仰绕自身 X 轴，orbit_pitch>0 为俯视）。
-## 刚性视角不做过弯侧倾（hood cam 惯例不随转向滚转），脉冲震屏照常生效。
+## 刚性视角不做过弯侧倾（hood cam 惯例不随转向滚转），震动走 _apply_shake。
 func _rigid_update(delta: float) -> void:
 	var car := follow_this
 	var car_basis := car.global_transform.basis
@@ -136,13 +155,6 @@ func _rigid_update(delta: float) -> void:
 		var target_fov: float = lerp(minimum_fov, maximum_fov,
 				clampf(_car_speed() / top_speed_threshold, 0.0, 1.0))
 		fov = lerp(fov, target_fov, fov_smooth_speed * delta)
-	if _shake_timer > 0.0:
-		_shake_timer -= delta
-		global_position += Vector3(
-			randf_range(-_shake_intensity, _shake_intensity),
-			randf_range(-_shake_intensity, _shake_intensity),
-			randf_range(-_shake_intensity, _shake_intensity))
-		_shake_intensity = lerp(_shake_intensity, 0.0, delta * (1.0 / _shake_duration))
 
 ## 引擎盖/保险杠锚点：车辆视觉 AABB（车头 -Z）推导，适配各车壳与占位车；
 ## 队旗横幅（TeamBanner）是装饰件，不参与测盒。
@@ -200,12 +212,70 @@ func orbit_look(yaw_delta: float, pitch_delta: float) -> void:
 	orbit_pitch = clampf(orbit_pitch + pitch_delta, orbit_pitch_min, orbit_pitch_max)
 	_orbit_active = true
 
-# ---------------- 持续震动源 ----------------
+# ---------------- Shaker 震动（原版插件，未改上游） ----------------
 
-func trigger_shake(intensity: float, duration: float) -> void:
-	if not shake_enabled:
+## 组件挂在相机下但不以相机为目标：相机 transform 每物理帧被 PVC 牵引/
+## 刚性锚定全量重写，会冲掉组件"撤销上次偏移+叠加新偏移"的差分；改为
+## custom_target 指向哑元节点，两条震动通道（常驻 preset + 外挂脉冲）都
+## 累加在哑元的本地 position/rotation 上，相机在物理帧末尾统一读取叠加。
+func _build_shaker() -> void:
+	_shake_target = Node3D.new()
+	_shake_target.name = "ShakeTarget"
+	add_child(_shake_target)
+	_shaker = ShakerComponent3D.new()
+	_shaker.name = "Shaker"
+	_shaker.custom_target = true
+	_shaker.Targets = [_shake_target]
+	_shaker.duration = 0.0   # 常驻无限循环
+	_shaker.intensity = 1.0   # 固定 1：外挂脉冲强度 = ext.intensity×组件intensity×包络，
+	                         # 若用组件intensity 承载微震强度会把碰撞 kick 稀释掉
+	_rumble_pos = ShakerTypeBrownianShake3D.new()
+	_rumble_pos.roughness = Vector3(0.6, 0.5, 0.4)
+	_rumble_pos.persistence = Vector3.ONE * 0.93
+	_rumble_pos.amplitude = Vector3.ZERO   # 强度由物理帧实时写入
+	_rumble_rot = ShakerTypeBrownianShake3D.new()
+	_rumble_rot.roughness = Vector3(0.4, 0.3, 0.5)
+	_rumble_rot.persistence = Vector3.ONE * 0.95
+	_rumble_rot.amplitude = Vector3.ZERO
+	var preset := ShakerPreset3D.new()
+	preset.PositionShake = [_rumble_pos]
+	preset.RotationShake = [_rumble_rot]
+	_shaker.shakerPreset = preset
+	add_child(_shaker)
+	_shaker.play_shake()
+
+## 碰撞脉冲（方向性）：world_dir 为撞击反方向（世界系），strength 为位移
+## 量级（米）。位置通道 = 脉冲曲线（0→峰→0，峰在中点）× 方向幅度，相机
+## 往 world_dir 甩出再回弹；旋转通道 = 白噪声混乱（碰撞瞬态要的是冲击感）。
+## 包络用 shake() 默认 0.25/0.25（宽平台型，实测中段 ~0.7），kick_gain 补偿。
+func impact_kick(world_dir: Vector3, strength: float) -> void:
+	if not shake_enabled or _shaker == null:
 		return
-	super(intensity, duration)
+	var dir := world_dir.normalized()
+	if dir.length_squared() < 0.25:
+		return
+	var preset := ShakerPreset3D.new()
+	var kick := ShakerTypeCurve3D.new()
+	kick.loop = false
+	# 三轴各持一份 Curve：类型 setter 会 connect changed 信号，共享实例会
+	# 触发 "already connected" 报错
+	var shape_x := Curve.new()
+	var shape_y := Curve.new()
+	var shape_z := Curve.new()
+	for shape: Curve in [shape_x, shape_y, shape_z]:
+		shape.add_point(Vector2(0.0, 0.0))
+		shape.add_point(Vector2(0.5, 1.0))
+		shape.add_point(Vector2(1.0, 0.0))
+	kick.curve_x = shape_x
+	kick.curve_y = shape_y
+	kick.curve_z = shape_z
+	kick.amplitude = dir * strength * kick_gain
+	var chaos := ShakerTypeRandom3D.new()
+	chaos.amplitude = Vector3.ONE * (strength * kick_rot_gain)
+	preset.PositionShake = [kick]
+	preset.RotationShake = [chaos]
+	_shaker.shake(preset, ShakerComponent3D.ShakeAddMode.add,
+			kick_duration, 1.0 / kick_duration, 1.0)
 
 ## 常驻微震强度（纯函数，自检用）：高速路面 + 重刹 + 漂移侧滑三源叠加，
 ## 量级 ~0.05m（碰撞脉冲 0.03~0.3m 的下限以下，只做肌理不做事件感）。
@@ -223,14 +293,22 @@ func _continuous_shake_intensity() -> float:
 			inten += shake_drift_gain * clampf((slip - SHAKE_DRIFT_SLIP) / 6.0, 0.0, 1.0)
 	return inten
 
-func _apply_continuous_shake(_delta: float) -> void:
-	if not shake_enabled:
+## 物理帧末尾：持续源强度写入两路 Brownian 的幅度（x/y 抖、z 不抖——
+## 近贴车身/保险杠视角下前后抖会拍出车头闪动，旧版同款约定），再把哑元
+## 上累积的震动偏移/旋转叠到相机全局位姿——PVC 牵引/刚性锚定先写基准，
+## 震动只做叠加，与旧 _apply_continuous_shake 同一注入槽位。
+func _apply_shake(_delta: float) -> void:
+	if _shaker == null:
 		return
-	var inten := _continuous_shake_intensity()
-	if inten <= 0.0:
-		return
-	# 只做横纵向抖动：z 向前后抖在近贴车身/保险杠视角下会拍出车头闪动
-	global_position += Vector3(randf_range(-inten, inten), randf_range(-inten, inten), 0.0)
+	var inten := _continuous_shake_intensity() if shake_enabled else 0.0
+	_rumble_pos.amplitude = Vector3(inten, inten * 0.8, 0.0)
+	_rumble_rot.amplitude = Vector3(0.10, 0.08, 0.12) * inten
+	global_position += _shake_target.position
+	var r := _shake_target.rotation
+	if r != Vector3.ZERO:
+		global_transform.basis = global_transform.basis \
+				.rotated(Vector3.RIGHT, r.x).rotated(Vector3.UP, r.y) \
+				.rotated(Vector3.BACK, r.z)
 
 func _car_speed() -> float:
 	if "linear_velocity" in follow_this:

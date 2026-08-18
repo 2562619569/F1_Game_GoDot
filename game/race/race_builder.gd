@@ -61,11 +61,12 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
 	cam.follow_this = player_racer.vehicle
 
-	# 碰撞震屏：PVC 自带 trigger_shake（无需另找模块），车身开启接触上报
-	# （contact_monitor/max_contacts_reported 已由 CollisionKick 统一开启，
-	# body_entered 是多播信号，本接线与冲击放大互不影响），按撞击相对速度映射
-	# 强度/时长，轻蹭（<6 m/s）不触发；cam_shake 总开关在相机内门控，
-	# 脉冲与持续震动源一并生效/关闭
+	# 碰撞震屏（Shaker 方向性脉冲，实现在 smooth_chase_camera.impact_kick）：
+	# 车身开启接触上报（contact_monitor/max_contacts_reported 已由 CollisionKick
+	# 统一开启，body_entered 是多播信号，本接线与冲击放大互不影响），按撞击
+	# 相对速度映射强度，轻蹭（<6 m/s）不触发；rel 是自车相对对方的速度，即
+	# 指向撞击源，kick 取反方向——相机往被撞的反方向甩再回弹；
+	# cam_shake 总开关在相机内门控，脉冲与持续微震一并生效/关闭
 	var pv := player_racer.vehicle
 	pv.body_entered.connect(func(body: Node) -> void:
 		var rel := pv.linear_velocity
@@ -73,7 +74,8 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 			rel -= body.linear_velocity
 		var impact := rel.length()
 		if impact > 6.0:
-			cam.trigger_shake(clampf((impact - 6.0) / 40.0, 0.03, 0.3), 0.25))
+			cam.impact_kick(-rel / maxf(impact, 0.001),
+					clampf((impact - 6.0) / 40.0, 0.03, 0.3)))
 
 	return {"track": track, "track_data": track_data, "racers": racers,
 		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque,
