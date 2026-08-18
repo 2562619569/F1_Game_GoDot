@@ -23,6 +23,12 @@ class_name ProVehicleCamera
 @export var enable_look_back: bool = true
 @export var look_back_action: String = "look_back"
 
+## [本仓库适配] 环视偏移（弧度），由子类 smooth_chase_camera 的鼠标/手柄输入驱动：
+## yaw 绕世界上轴旋转牵引方向（相机绕车环视），pitch 抬升相机俯角。
+## 保持 0 时本脚本行为与上游完全一致。
+var orbit_yaw := 0.0
+var orbit_pitch := 0.0
+
 var _shake_intensity: float = 0.0
 var _shake_duration: float = 0.0
 var _shake_timer: float = 0.0
@@ -48,7 +54,8 @@ func _physics_process(delta: float) -> void:
 	# Godot 标准 -Z 朝前，故下面 basis.z 的符号与上游相反，算法本身未改动。
 	if is_looking_back:
 		var forward_vector = -car_basis.z * follow_distance
-		forward_vector.y = follow_height
+		forward_vector = forward_vector.rotated(Vector3.UP, orbit_yaw)
+		forward_vector.y = follow_height + follow_distance * sin(orbit_pitch)
 		global_position = global_position.lerp(car_origin + forward_vector, speed * delta)
 	else:
 		var drift_vector = (global_position - car_origin)
@@ -60,8 +67,9 @@ func _physics_process(delta: float) -> void:
 			if drift_vector.dot(car_basis.z) < -0.99:
 				drift_vector = drift_vector.rotated(Vector3.UP, 0.05)
 			drift_vector = drift_vector.slerp(car_basis.z, 2.0 * delta)
+		drift_vector = drift_vector.rotated(Vector3.UP, orbit_yaw)
 		var target_position: Vector3 = car_origin + (drift_vector * follow_distance)
-		target_position.y = car_origin.y + follow_height
+		target_position.y = car_origin.y + follow_height + follow_distance * sin(orbit_pitch)
 		global_position = global_position.lerp(target_position, speed * delta)
 	
 	# 2. DYNAMIC FOV

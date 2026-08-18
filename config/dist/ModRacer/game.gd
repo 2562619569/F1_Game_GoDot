@@ -17,6 +17,13 @@ var data = \
 4:{ "id":4,  "key":'start_countdown',  "value":3.0,  "note":'Start countdown (sec)', },
 5:{ "id":5,  "key":'lock_ahead_range',  "value":60.0,  "note":'Rocket lock-on range ahead (m)', },
 6:{ "id":6,  "key":'loot_pick_radius',  "value":3.0,  "note":'Loot pickup radius (m)', },
+7:{ "id":7,  "key":'checkpoint_interval',  "value":100.0,  "note":'Checkpoint spacing along main route (m)', },
+8:{ "id":8,  "key":'rewind_speed_limit',  "value":20.0,  "note":'Rewind (R) allowed below this speed (m/s)', },
+9:{ "id":9,  "key":'rewind_ghost_sec',  "value":5.0,  "note":'Ghost (translucent, no car collision) after rewind (sec)', },
+10:{ "id":10,  "key":'cam_chase_distance',  "value":6.5,  "note":'Chase cam distance (m)', },
+11:{ "id":11,  "key":'cam_chase_height',  "value":2.6,  "note":'Chase cam height (m)', },
+12:{ "id":12,  "key":'cam_fov_max',  "value":79.0,  "note":'Chase cam max FOV at top speed (deg)', },
+13:{ "id":13,  "key":'cam_shake',  "value":1.0,  "note":'Camera shake master switch (0=off)', },
 
 }
 

@@ -1,14 +1,22 @@
 extends SceneTree
-## Pro Vehicle Camera（+smooth_chase_camera 旋转低通）自检：
+## Pro Vehicle Camera（+smooth_chase_camera 旋转低通/视角模式/环视/震动源）自检：
 ## godot --headless -s game/testing/camera_check.gd 运行
 ## 1. 匀速直线（20 m/s，-Z 前进）：相机悬在车后（+Z 侧），高度≈follow_height；
 ## 2. 动态 FOV：中速抬升、高速逼近 maximum_fov；
 ## 3. look_back 动作：相机甩到车头侧，松开回到车尾侧；
 ## 4. trigger_shake：震屏计时器启动且不报错；
 ## 5. 转向方波（模拟键盘 A/D 阶跃）+ 急甩头：相机逐帧姿态变化被低通压住，
-##    且静置后视线仍收敛于车身（平滑不牺牲跟随）。
-## 目标用冻结刚体（可设 linear_velocity/steering），physics_frame 回调晚于
-## 相机 _physics_process，故用 call_deferred 对齐"刚体先动、相机后读"的真实时序。
+##    且静置后视线仍收敛于车身（平滑不牺牲跟随）；
+## 6. 视角模式：cycle 到追尾近参数按比例收紧；引擎盖/保险杠刚性锚定车身
+##    （车前/高于原点/偏移量精确等于锚点长度/视线随车头、look_back 后翻），
+##    保险杠锚点比引擎盖更靠前更低；切回追尾远恢复基准参数；
+## 7. 环视：orbit_look 侧向甩头后相机横移到车身侧，松手指数回正归零；
+## 8. 持续震动源：巡航(20 m/s)三源全零，重刹+侧滑叠加为正，纯高速为正；
+## 9. 震动总开关：shake_enabled=false 时持续源不产生偏移、trigger_shake 不启动。
+## 目标用冻结刚体（可设 linear_velocity/steering/brake_input/local_velocity），
+## physics_frame 回调晚于相机 _physics_process，故用 call_deferred 对齐
+## "刚体先动、相机后读"的真实时序。探针无视觉网格，刚性锚点走回退车盒。
+## 注意：转向方波阶段后车体残余偏航 ~1.25 rad，后续断言一律在车身空间做。
 
 var checks := 0
 var failures := 0
@@ -31,8 +39,8 @@ func _init() -> void:
 	delta_p = 1.0 / float(Engine.physics_ticks_per_second)
 	target = RigidBody3D.new()
 	target.freeze = true   # 冻结：位置/朝向由探针驱动，linear_velocity 手填
-	var ts := GDScript.new()   # 挂 steering 属性以触发上游过弯侧倾分支
-	ts.source_code = "extends RigidBody3D\nvar steering := 0.0\n"
+	var ts := GDScript.new()   # 挂 steering/brake_input/local_velocity 驱动侧倾与震动源
+	ts.source_code = "extends RigidBody3D\nvar steering := 0.0\nvar brake_input := 0.0\nvar local_velocity := Vector3.ZERO\n"
 	ts.reload()
 	target.set_script(ts)
 	root.add_child(target)
@@ -59,9 +67,16 @@ func horiz_dist() -> float:
 	v.y = 0.0
 	return v.length()
 
+## 相机位置在车身空间的坐标（x 右 / y 上 / z 车后）
+func cam_local() -> Vector3:
+	return target.global_transform.basis.inverse() * (cam.global_position - target.global_position)
+
+func cam_view_dir() -> Vector3:
+	return -cam.global_transform.basis.z
+
 func _on_phys() -> void:
 	# ---- 阶段编排 ----
-	_v_speed = 40.0 if tick >= 252 and tick < 380 else 20.0
+	_v_speed = 45.0 if tick >= 945 else (40.0 if tick >= 252 and tick < 380 else 20.0)
 	_yaw_rate = 2.5 if tick >= 460 and tick < 520 else 0.0
 	_steer = 1.0 if tick >= 400 and tick < 430 else 0.0
 	_move.call_deferred()
@@ -114,6 +129,98 @@ func _on_phys() -> void:
 		var dir := (target.global_position - cam.global_position).normalized()
 		var aim := -cam.global_transform.basis.z
 		ok(dir.angle_to(aim) < 0.2, "camera still aims at car after settle (%.3f rad)" % dir.angle_to(aim))
+
+	# ---- 7. 视角模式：追尾近 → 引擎盖 → 保险杠 → 追尾远 ----
+	if tick == 560:
+		cam.cycle_view()
+		ok(cam.view_mode == cam.ViewMode.CHASE_NEAR, "cycle_view: CHASE_FAR → CHASE_NEAR")
+		ok(absf(cam.follow_distance - 6.5 * 0.72) < 0.01 and absf(cam.follow_height - 2.6 * 0.8) < 0.01,
+				"CHASE_NEAR scales distance/height (%.2f/%.2f)" % [cam.follow_distance, cam.follow_height])
+	if tick == 600:
+		cam.cycle_view()
+		ok(cam.view_mode == cam.ViewMode.HOOD, "cycle_view: CHASE_NEAR → HOOD")
+		ok(cam._rigid_anchor.y > 0.5 and cam._rigid_anchor.z < -0.5,
+				"hood anchor above origin & front half (%s)" % cam._rigid_anchor)
+		var anchor_len: float = cam._rigid_anchor.length()
+		ok(anchor_len > 0.8, "fallback box gives sane hood anchor (%.2f m)" % anchor_len)
+	if tick == 640:
+		var rel := cam.global_position - target.global_position
+		var fwd := -target.global_transform.basis.z
+		ok(rel.dot(fwd) > 0.5, "hood cam rides in front of car (%.2f m along fwd)" % rel.dot(fwd))
+		ok(cam_local().y > 0.5, "hood cam above car origin (%.2f m)" % cam_local().y)
+		ok(cam_view_dir().angle_to(fwd) < 0.15,
+				"hood cam looks along car forward (%.3f rad)" % cam_view_dir().angle_to(fwd))
+		# 相机帧读的是上一次 _move 后的车位（一帧滞后），对齐后再比锚点长度
+		var car_prev := target.global_position - target.linear_velocity * delta_p
+		var off := (cam.global_position - car_prev).length()
+		ok(absf(off - cam._rigid_anchor.length()) < 1e-3,
+				"hood cam rigidly anchored (offset %.4f == anchor %.4f)" % [off, cam._rigid_anchor.length()])
+	if tick == 650:
+		var hood_anchor: Vector3 = cam._rigid_anchor
+		cam.cycle_view()
+		ok(cam.view_mode == cam.ViewMode.BUMPER, "cycle_view: HOOD → BUMPER")
+		ok(cam._rigid_anchor.z < hood_anchor.z and cam._rigid_anchor.y < hood_anchor.y,
+				"bumper anchor farther forward & lower than hood (%s vs %s)" % [cam._rigid_anchor, hood_anchor])
+	if tick == 660:
+		Input.action_press("look_back")
+	if tick == 690:
+		var back := target.global_transform.basis.z
+		ok(cam_view_dir().angle_to(back) < 0.2,
+				"look_back flips rigid view backward (%.3f rad)" % cam_view_dir().angle_to(back))
+		Input.action_release("look_back")
+		cam.cycle_view()   # BUMPER → CHASE_FAR
+	if tick == 740:
+		ok(absf(cam.follow_distance - 6.5) < 0.01 and absf(cam.follow_height - 2.6) < 0.01,
+				"cycle back to CHASE_FAR restores base params (%.2f/%.2f)" % [cam.follow_distance, cam.follow_height])
+	if tick == 795:
+		ok(cam_local().z > 3.0, "camera recovers behind car after cycle (%.2f m)" % cam_local().z)
+
+	# ---- 8. 环视与回正 ----
+	if tick == 800:
+		cam.orbit_look(1.5, 0.3)
+		ok(absf(cam.orbit_yaw + 1.5) < 1e-3 and absf(cam.orbit_pitch - 0.3) < 1e-3,
+				"orbit_look applies yaw/pitch (%.2f/%.2f)" % [cam.orbit_yaw, cam.orbit_pitch])
+	if tick == 820:
+		ok(absf(cam_local().x) > 3.0, "orbit swings camera to car side (%.2f m lateral)" % cam_local().x)
+		ok(cam.orbit_yaw < -0.4 and cam.orbit_yaw > -1.4,
+				"orbit holds while untouched, decays gently (%.2f)" % cam.orbit_yaw)
+	if tick == 935:
+		ok(absf(cam.orbit_yaw) < 0.05 and absf(cam.orbit_pitch) < 0.02,
+				"orbit springs back to zero (%.4f/%.4f)" % [cam.orbit_yaw, cam.orbit_pitch])
+		ok(cam_local().z > 3.0, "camera back behind car after orbit (%.2f m)" % cam_local().z)
+
+	# ---- 9. 持续震动源 ----
+	if tick == 945:
+		ok(cam._continuous_shake_intensity() == 0.0, "cruise 20 m/s: no continuous shake")
+		target.brake_input = 1.0
+		target.local_velocity = Vector3(6.0, 0.0, -20.0)
+		var i: float = cam._continuous_shake_intensity()
+		ok(i > 0.01 and i < 0.06, "brake+drift stack above zero (%.4f)" % i)
+		target.brake_input = 0.0
+		target.local_velocity = Vector3.ZERO
+	if tick == 950:
+		var i2: float = cam._continuous_shake_intensity()
+		ok(i2 > 0.005 and i2 < 0.02, "high speed road rumble only (%.4f)" % i2)
+
+	# ---- 10. 震动总开关 ----
+	if tick == 960:
+		cam.set_view(cam.ViewMode.HOOD)
+		cam.shake_enabled = false
+		target.brake_input = 1.0
+		target.local_velocity = Vector3(6.0, 0.0, -20.0)
+	if tick == 965:
+		var car_prev := target.global_position - target.linear_velocity * delta_p
+		var off := (cam.global_position - car_prev).length()
+		ok(absf(off - cam._rigid_anchor.length()) < 1e-3,
+				"shake off: rigid cam stays exactly on anchor (%.6f)" % off)
+		# 门控断言：旧震屏衰减完 timer 停在小负残差（上游行为），未被触发即 ≤0
+		cam.trigger_shake(0.3, 0.25)
+		ok(cam._shake_timer <= 0.0, "shake off: trigger_shake ignored (%.4f)" % cam._shake_timer)
+		cam.shake_enabled = true
+		target.brake_input = 0.0
+		target.local_velocity = Vector3.ZERO
+
+	if tick == 970:
 		print("========== CAMERA CHECK: %d checks, %d failures ==========" % [checks, failures])
 		quit(1 if failures > 0 else 0)
 

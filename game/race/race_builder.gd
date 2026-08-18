@@ -41,19 +41,22 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	var player_racer := _spawn_racers(race, track, track_data, racers)
 
 	# --- 相机跟随玩家（Pro Vehicle Camera：弹性牵引+速度FOV+过弯侧倾+look_back，
-	#     smooth_chase_camera 包一层旋转低通以消除键盘阶跃转向的视角跳变） ---
+	#     smooth_chase_camera 包一层旋转低通，并加视角模式循环/鼠标·手柄环视/持续震动源；
+	#     参数走 Game 表 cam_*（策划可调），碰撞脉冲震屏接线见下） ---
 	var cam := Camera3D.new()
 	cam.set_script(CAMERA_SCRIPT)
-	cam.follow_distance = 6.5
-	cam.follow_height = 2.6
+	cam.follow_distance = Match.game_cfg("cam_chase_distance")
+	cam.follow_height = Match.game_cfg("cam_chase_height")
 	cam.speed = 20.0
-	cam.maximum_fov = 79.0   # FOV 随速度轻微拉伸（上游默认 85 摆幅偏大）
+	cam.maximum_fov = Match.game_cfg("cam_fov_max")
+	cam.shake_enabled = Match.game_cfg("cam_shake") > 0.5
 	race.add_child(cam)
 	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
 	cam.follow_this = player_racer.vehicle
 
 	# 碰撞震屏：PVC 自带 trigger_shake（无需另找模块），车身开启接触上报，
-	# 按撞击相对速度映射强度/时长，轻蹭（<6 m/s）不触发
+	# 按撞击相对速度映射强度/时长，轻蹭（<6 m/s）不触发；
+	# cam_shake 总开关在相机内门控，脉冲与持续震动源一并生效/关闭
 	var pv := player_racer.vehicle
 	pv.contact_monitor = true
 	pv.max_contacts_reported = 4
