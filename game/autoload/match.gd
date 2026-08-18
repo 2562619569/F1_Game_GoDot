@@ -315,8 +315,15 @@ func commit_round(res: RoundResult) -> Array:
 		champion = res.champion
 	return rewards
 
-## 名次 -> 下回合发车位（倒序发车：第 1 名发最后）
-func grid_for_rank(rank: int, racer_count: int) -> int:
+## 名次 -> 下回合发车位（倒序发车：第 1 名发最后）。
+## 发车格是地图编辑器定义的满编网格（grid.count=8，与 player_max / RankReward
+## 行数一致）：grid_next 直接就是格号（1=杆位，表内最大值=末位），车数不足时
+## 靠后的格子空着。不按实际车数折叠/钳制——旧钳制曾把 8/7/6/5 全压到 4 号位，
+## 造成下回合全员同格堆叠生成。
+func grid_for_rank(rank: int) -> int:
+	var full := 0
+	for rr in Settings.rank_reward.data.values():
+		full = maxi(full, int(rr.grid_next))
 	if Settings.rank_reward.data.has(rank):
-		return clampi(int(Settings.rank_reward.data[rank].grid_next), 1, racer_count)
-	return rank
+		return clampi(int(Settings.rank_reward.data[rank].grid_next), 1, full)
+	return clampi(full - rank + 1, 1, full)

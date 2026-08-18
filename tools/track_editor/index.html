@@ -250,7 +250,7 @@ function defaultState(){
   return {
     meta: { id: 1, name: "Lakeside Highway" },
     width_default: 24,
-    grid: { count: 4, row_gap: 8, col_gap: 7, first_row_offset: 6 },
+    grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6 },
     options: { walls: true, wall_height: 1.2, sample_step: 2 },
     routes: [
       { id: "main", surface: "road", points: [
@@ -1166,7 +1166,7 @@ function bindPanel(){
   bind("pPty", el => { if (sel.pt>=0) currentRoute().points[sel.pt].y = parseFloat(el.value) || 0; fitProfileY(); });
   bind("pPtz", el => { if (sel.pt>=0) currentRoute().points[sel.pt].z = parseFloat(el.value) || 0; });
   bind("pPtw", el => { if (sel.pt>=0) currentRoute().points[sel.pt].width = el.value === "" ? null : (parseFloat(el.value) || null); });
-  bind("pGc", el => S.grid.count = Math.max(1, Math.min(12, parseInt(el.value) || 4)));
+  bind("pGc", el => S.grid.count = Math.max(1, Math.min(12, parseInt(el.value) || 8)));
   bind("pGr", el => S.grid.row_gap = parseFloat(el.value) || 8);
   bind("pGl", el => S.grid.col_gap = parseFloat(el.value) || 7);
   bind("pGf", el => S.grid.first_row_offset = parseFloat(el.value) || 6);
@@ -1304,7 +1304,7 @@ function applyImported(d){
   S = {
     meta: { id: d.meta?.id ?? 1, name: d.meta?.name ?? "Imported" },
     width_default: d.width_default ?? 24,
-    grid: { count: 4, row_gap: 8, col_gap: 7, first_row_offset: 6, ...(d.grid || {}) },
+    grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6, ...(d.grid || {}) },
     options: { walls: true, wall_height: 1.2, sample_step: 2, ...(d.options || {}) },
     routes: d.routes.map(r => ({ id: r.id, surface: r.surface || "road", points: r.points.map(p => ({ x: p.x||0, y: p.y||0, z: p.z||0, width: p.width ?? null })) })),
   };

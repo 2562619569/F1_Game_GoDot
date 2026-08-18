@@ -9,7 +9,7 @@ const LOOT_Y := 0.9        # 掉落物悬浮高度(路面之上)
 const LOOKAHEAD_VSHIFT := 0.55  # AI 前瞻时间(秒)对应距离系数
 
 var meta := {"id": 0, "name": ""}
-var grid_cfg := {"count": 4, "row_gap": 8.0, "col_gap": 7.0, "first_row_offset": 6.0}
+var grid_cfg := {"count": 8, "row_gap": 8.0, "col_gap": 7.0, "first_row_offset": 6.0}
 var options := {"walls": true, "wall_height": 1.2}
 var routes: Array = []   # [{id, surface, pts, tans, widths, s_arr, radii}]
 var main: Dictionary = {}

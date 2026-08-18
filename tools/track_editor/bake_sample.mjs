@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const SAMPLE = {
   meta: { id: 1, name: "Lakeside Highway" },
   width_default: 24,
-  grid: { count: 4, row_gap: 8, col_gap: 7, first_row_offset: 6 },
+  grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6 },
   options: { walls: true, wall_height: 1.2, sample_step: 2 },
   routes: [
     { id: "main", surface: "road", points: [
@@ -150,7 +150,7 @@ if (args.length === 0){
     const S = JSON.parse(readFileSync(src, "utf8"));
     const { json, anchorIdx } = bakeTrack({
       meta: S.meta, width_default: S.width_default,
-      grid: { count: 4, row_gap: 8, col_gap: 7, first_row_offset: 6, ...S.grid },
+      grid: { count: 8, row_gap: 8, col_gap: 7, first_row_offset: 6, ...S.grid },
       options: { walls: true, wall_height: 1.2, sample_step: 2, ...S.options },
       routes: S.routes,
     });

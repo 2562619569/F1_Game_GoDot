@@ -6,6 +6,7 @@
 # 双击 file:// 打开编辑器时,API 会请求 http://localhost:8137(本服务须在跑),
 # 服务未启动则编辑器自动进入离线模式(仅导入/导出下载)。
 import json
+import math
 import re
 import socket
 import sys
@@ -119,7 +120,7 @@ def default_map_template(meta):
         "version": 1,
         "meta": {"id": meta["id"], "name": meta["name"]},
         "width_default": 24,
-        "grid": {"count": 4, "row_gap": 8, "col_gap": 7, "first_row_offset": 6},
+        "grid": {"count": 8, "row_gap": 8, "col_gap": 7, "first_row_offset": 6},
         "options": {"walls": True, "wall_height": 1.2, "sample_step": 2},
         "routes": [
             {
@@ -133,6 +134,27 @@ def default_map_template(meta):
         ],
         "baked": {},
     }
+
+
+def baked_route_length(baked):
+    """烘焙主线长度(米)。新格式点为 [x,y,z,width] 需累计折线长,
+    旧格式 [x,y,z,tx,ty,tz,width,s] 直接取末点弧长 s。"""
+    if not baked:
+        return 0.0
+    last = baked[-1]
+    if len(last) >= 8:
+        try:
+            return float(last[7])
+        except (TypeError, ValueError):
+            pass
+    total = 0.0
+    prev = None
+    for p in baked:
+        cur = (p[0], p[1], p[2])
+        if prev is not None:
+            total += math.dist(cur, prev)
+        prev = cur
+    return total
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -174,7 +196,7 @@ class Handler(SimpleHTTPRequestHandler):
                         mid = int(d.get("meta", {}).get("id", 0))
                         files[mid] = {
                             "name": str(d.get("meta", {}).get("name", "")),
-                            "length": round(float(baked[-1][7])) if baked else 0,
+                            "length": round(baked_route_length(baked)),
                         }
                     except (ValueError, KeyError, IndexError):
                         pass  # skip broken files

@@ -20,8 +20,8 @@ static func build(order: Array, is_final: bool) -> RoundResult:
 			"time": r.finish_time if r.finished else -1.0, "dnf": not r.finished,
 			"progress": r.progress,
 		})
-		# 倒序发车：名次越高，下回合发车位越靠后（RankReward 表）
-		res.next_grid[r.name] = Match.grid_for_rank(rank, count)
+		# 倒序发车：名次越高，下回合发车位越靠后（RankReward 表格号 = 地图 8 格网格）
+		res.next_grid[r.name] = Match.grid_for_rank(rank)
 		if r.is_player:
 			res.player_rank = rank
 	if is_final:

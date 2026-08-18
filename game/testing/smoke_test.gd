@@ -132,6 +132,26 @@ func _run() -> void:
 	await until(func(): return main.race != null and main.race.round_idx == 2, 10.0)
 	ok(main.race.round_idx == 2, "intermission READY -> round 2 started")
 	ok(main.current_ui == null, "intermission UI hidden during race")
+
+	# ---- 9.5 回合2倒序发车：网格号互异、出生点不重叠（防全员同格堆叠生成） ----
+	for i in 10:
+		await get_tree().physics_frame
+	var grid_ids: Array = []
+	for r in main.race.racers:
+		grid_ids.append(int(Match.next_grid.get(r.name, -1)))
+	var grid_uniq := {}
+	for g in grid_ids:
+		grid_uniq[g] = true
+	ok(grid_ids.size() == 4 and not grid_ids.has(-1) and grid_uniq.size() == 4,
+			"round 2 grid numbers all distinct: %s" % str(grid_ids))
+	var spawn_apart := true
+	for i in main.race.racers.size():
+		for j in range(i + 1, main.race.racers.size()):
+			if main.race.racers[i].vehicle.global_position.distance_squared_to(
+					main.race.racers[j].vehicle.global_position) < 4.0:
+				spawn_apart = false
+	ok(spawn_apart, "round 2 spawn positions >=2m apart (no same-slot pile-up)")
+
 	var torque_r2: float = main.race.player_torque_applied
 	ok(torque_r2 > torque_r1 * 1.01, "engine mod raised REAL vehicle torque (%.0f -> %.0f NM)" % [torque_r1, torque_r2])
 

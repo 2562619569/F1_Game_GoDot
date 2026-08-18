@@ -20,13 +20,13 @@ func _ready() -> void:
 	if data == null:
 		_finish()
 		return
-	ok(absf(data.length - 4130.4) < 2.0, "主路长度 %.1fm(含 20m 发车引道)" % data.length)
+	ok(absf(data.length - 4146.4) < 2.0, "主路长度 %.1fm(含 36m 发车引道/8 格)" % data.length)
 	ok(data.routes.size() == 3, "路由数 %d(主路+分支)" % data.routes.size())
 
 	var anchor: float = float(data.grid_cfg.get("anchor_s", 0.0))
-	ok(absf(anchor - 20.0) < 0.01, "发车引道 anchor_s=%.1f" % anchor)
+	ok(absf(anchor - 36.0) < 0.01, "发车引道 anchor_s=%.1f" % anchor)
 	var p_leadin := data.point_at(0.0)
-	ok(p_leadin.distance_to(Vector3(0, 0, 20)) < 1.5, "point_at(0) 在引道尾端 %s" % [p_leadin])
+	ok(p_leadin.distance_to(Vector3(0, 0, 36)) < 1.5, "point_at(0) 在引道尾端 %s" % [p_leadin])
 	var p0 := data.start_point()
 	ok(p0.distance_to(Vector3(0, 0, 0)) < 1.0, "起点线在 (0,0,0) %s" % [p0])
 	var pe := data.point_at(data.length)
@@ -42,11 +42,11 @@ func _ready() -> void:
 	var g1 := data.grid_position(1)
 	var d1 := g1.distance_to(p0)
 	ok(d1 > 2.0 and d1 < 15.0, "1 号发车位在起点线附近 %s" % [g1])
-	var g4 := data.grid_position(4)
+	var g8 := data.grid_position(8)
 	var back1: float = (g1 - p0).dot(fwd)
-	var back4: float = (g4 - p0).dot(fwd)
-	ok(back4 < back1 - 6.0, "4 号发车位在 1 号后方(%.1f < %.1f)" % [back4, back1])
-	for g_no in [1, 4]:
+	var back8: float = (g8 - p0).dot(fwd)
+	ok(back8 < back1 - 6.0, "8 号发车位在 1 号后方(%.1f < %.1f)" % [back8, back1])
+	for g_no in [1, 8]:
 		var lat: Dictionary = data.main_lateral(data.grid_position(g_no))
 		ok(float(lat["dist"]) < float(lat["half"]),
 				"发车位 %d 在路面内(%.1f < %.1f)" % [g_no, float(lat["dist"]), float(lat["half"])])

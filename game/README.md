@@ -94,6 +94,10 @@ game/
 # 碰撞体检（美术装配后碰撞体重建为贴地底盘低盒 + 撞墙不穿不翻 + 接地防翻回正）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/collision_check.gd
 
+# 倒序发车位自检（地图编辑器定义满编 8 格发车网格，RankReward.grid_next 直用格号：
+# 满编互异/第1名末位/车数不足时后格留空不折叠/结算落库互异/各地图 8 格几何互异且在路面内）
+"C:/Tools/Godot/Godot.exe" --headless --path . res://game/testing/grid_check.tscn
+
 # 首次添加新脚本后需重建类缓存：
 # 同上命令加 --import 参数先跑一次
 ```
