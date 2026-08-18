@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://game/ui/hud/race_hud.gd" id="1_hud"]
-[ext_resource type="Script" path="res://game/ui/hud/speedometer.gd" id="2_speedometer"]
+[ext_resource type="PackedScene" path="res://game/ui/hud/speedometer.tscn" id="2_speedometer"]
+[ext_resource type="Script" path="res://game/ui/hud/minimap.gd" id="3_minimap"]
 
 [node name="RaceHUD" type="Control"]
 anchors_preset = 15
@@ -12,33 +13,25 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("1_hud")
 
-[node name="RoundLabel" type="Label" parent="."]
+[node name="MiniMap" type="Control" parent="."]
 unique_name_in_owner = true
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -560.0
-offset_top = 44.0
-offset_right = -16.0
-offset_bottom = 70.0
+offset_left = -268.0
+offset_top = 16.0
+offset_right = -20.0
+offset_bottom = 264.0
 grow_horizontal = 0
-theme_type_variation = &"Dim"
-theme_override_font_sizes/font_size = 14
-text = "ROUND 1/4"
-horizontal_alignment = 2
+mouse_filter = 2
+script = ExtResource("3_minimap")
+
+[node name="RoundLabel" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
 
 [node name="TimerLabel" type="Label" parent="."]
 unique_name_in_owner = true
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -260.0
-offset_top = 12.0
-offset_right = -16.0
-offset_bottom = 40.0
-grow_horizontal = 0
-theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 17
-text = "0 / 240s"
-horizontal_alignment = 2
+visible = false
 
 [node name="StandingsBox" type="Control" parent="."]
 unique_name_in_owner = true
@@ -68,99 +61,16 @@ text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Speedometer" type="Control" parent="."]
+[node name="Speedometer" parent="." instance=ExtResource("2_speedometer")]
 unique_name_in_owner = true
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 18.0
-offset_top = -290.0
-offset_right = 290.0
+offset_top = -350.0
+offset_right = 368.0
 offset_bottom = -18.0
 grow_vertical = 0
 mouse_filter = 2
-script = ExtResource("2_speedometer")
-
-[node name="RpmCaption" type="Label" parent="Speedometer"]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -48.0
-offset_top = -67.0
-offset_right = 48.0
-offset_bottom = -36.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.67, 0.78, 0.84, 0.9)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
-theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 10
-text = "RPM\nX1000"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="SpeedValue" type="Label" parent="Speedometer"]
-unique_name_in_owner = true
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -90.0
-offset_top = -32.0
-offset_right = 90.0
-offset_bottom = 30.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.94, 0.98, 1, 1)
-theme_override_colors/font_outline_color = Color(0.02, 0.04, 0.07, 0.95)
-theme_override_constants/outline_size = 5
-theme_override_font_sizes/font_size = 52
-text = "0"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="UnitLabel" type="Label" parent="Speedometer"]
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -50.0
-offset_top = 27.0
-offset_right = 50.0
-offset_bottom = 48.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.76, 0.88, 0.94, 0.96)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
-theme_override_constants/outline_size = 3
-theme_override_font_sizes/font_size = 13
-text = "KM/H"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="GearValue" type="Label" parent="Speedometer"]
-unique_name_in_owner = true
-layout_mode = 0
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -45.0
-offset_top = 50.0
-offset_right = 45.0
-offset_bottom = 91.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.94, 0.98, 1, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
-theme_override_constants/outline_size = 4
-theme_override_font_sizes/font_size = 30
-text = "0"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="TacticalBox" type="HBoxContainer" parent="."]
 unique_name_in_owner = true

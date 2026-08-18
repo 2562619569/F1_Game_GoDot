@@ -10,6 +10,7 @@ const SLIDE_SEC := 0.35   # 换位滑动时长
 
 var manager: RaceManager
 
+@onready var minimap: RaceMiniMap = %MiniMap
 @onready var round_label: Label = %RoundLabel
 @onready var timer_label: Label = %TimerLabel
 @onready var standings_box: Control = %StandingsBox
@@ -38,6 +39,7 @@ func bind(m: RaceManager) -> void:
 
 func _ready() -> void:
 	_build_finish_overlay()
+	minimap.bind(manager)
 	if manager == null:
 		return
 	var info := manager.race_info()
