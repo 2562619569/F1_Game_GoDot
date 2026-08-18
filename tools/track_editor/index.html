@@ -325,6 +325,8 @@ function bakeRoute(route){
       push(crPoint(p0,p1,p2,p3, k/nsteps), k/nsteps, wA, wB);
     out.cpS[i+1] = out.samples[out.samples.length-1].s;
   }
+  // 发车引道(仅主路):须在切线差分前插入,引道与起点截面切线自然连续
+  if (route.surface === "road") prependLeadIn(out, step);
   // 切线:中心差分
   const sm = out.samples;
   for (let i = 0; i < sm.length; i++){
@@ -333,6 +335,40 @@ function bakeRoute(route){
     sm[i].tx=dx/L; sm[i].ty=dy/L; sm[i].tz=dz/L;
   }
   return out;
+}
+
+/** 发车引道长度:起点线后最后排发车位 + 6m 余量(与 Godot grid 公式配套) */
+function gridLeadLen(){
+  const g = S.grid;
+  const rows = Math.ceil((g.count || 4) / 2);
+  return (g.first_row_offset || 6) + (g.row_gap || 8) * (rows - 1) + 6;
+}
+
+/** 主路采样前插发车引道直段:发车网格在起点线后方 first_row_offset + row_gap×行数,
+ *  不补这段发车位就悬在赛道外(回合开始前车辆生成在半空)。直段沿首段切线反向,
+ *  宽度/高度同起点截面;起点线锚点记录在 out.anchorIdx / out.anchorS,
+ *  发车格与起点标记都锚在那里 */
+function prependLeadIn(out, step){
+  const sm = out.samples;
+  const a = sm[0], b = sm[1];
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const L = Math.hypot(dx, dz) || 1;
+  const lead = gridLeadLen();
+  const n = Math.max(2, Math.round(lead / step));
+  const d = lead / n;
+  const add = [];
+  for (let k = n; k >= 1; k--)
+    add.push({ x: a.x - dx/L * d * k, y: a.y, z: a.z - dz/L * d * k, width: a.width });
+  out.samples = add.concat(sm);
+  // 弧长整体重算:引道从 s=0 起,起点线恰落在 s=lead
+  out.samples[0].s = 0;
+  for (let i = 1; i < out.samples.length; i++){
+    const p = out.samples[i-1], q = out.samples[i];
+    q.s = p.s + Math.hypot(q.x-p.x, q.y-p.y, q.z-p.z);
+  }
+  for (let i = 0; i < out.cpS.length; i++) out.cpS[i] += lead;
+  out.anchorIdx = add.length;
+  out.anchorS = lead;
 }
 
 function rebakeAll(){
@@ -414,7 +450,8 @@ function gridSlots(){
   const out = [];
   const main = baked["main"];
   if (!main || main.samples.length < 2) return out;
-  const t0 = main.samples[0], n0 = normalOf(t0);
+  // 锚在起点线(引道插入后 samples[0] 是引道尾端,不是起点线)
+  const t0 = main.samples[main.anchorIdx || 0], n0 = normalOf(t0);
   const g = S.grid;
   for (let i = 0; i < g.count; i++){
     const row = Math.floor(i/2), side = (i % 2 === 0) ? -1 : 1;
@@ -579,7 +616,7 @@ function drawMarkers(ctx){
     ctx.fillStyle = color; ctx.font = "bold 13px sans-serif";
     ctx.fillText(label, w2sX(p.x)+6, w2sY(p.z)-6);
   };
-  crossLine(sm[0], "#54d06a", "S");
+  crossLine(sm[baked["main"].anchorIdx || 0], "#54d06a", "S");
   crossLine(sm[sm.length-1], "#f0f0f0", "F");
   // 发车格
   for (const g of gridSlots()){
@@ -1238,7 +1275,7 @@ function buildExport(){
     version: 1,
     meta: { ...S.meta },
     width_default: S.width_default,
-    grid: { ...S.grid },
+    grid: { ...S.grid, anchor_s: r2(baked["main"].anchorS || 0) },
     options: { ...S.options },
     routes: S.routes.map(r => ({ id: r.id, surface: r.surface, points: r.points.map(p => ({ x: r3(p.x), y: r3(p.y), z: r3(p.z), width: p.width })) })),
     baked: bk,

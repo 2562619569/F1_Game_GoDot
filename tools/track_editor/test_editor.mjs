@@ -45,7 +45,7 @@ const $ = id => document.getElementById(id);
 const statsText = () => ($("stats").textContent || "").trim();
 
 // ---- 1. 初始加载 ----
-ok(statsText().includes("538"), "初始统计:总长 538m(" + statsText() + ")");
+ok(statsText().includes("558"), "初始统计:总长 558m(含 20m 发车引道)(" + statsText() + ")");
 ok($("hint").textContent.includes("选择/拖动"), "默认 select 工具提示");
 
 // ---- 2. 工具切换(点击按钮) ----
@@ -86,8 +86,11 @@ ok(exported.version === 1 && exported.meta.id === 1, "导出 meta/version");
 ok(exported.routes.length === 2 && exported.routes[0].surface === "road" && exported.routes[1].surface === "dirt", "导出含主路+Dirt 分支");
 const bm = exported.baked.main;
 ok(Array.isArray(bm) && bm.length > 200, "烘焙主路采样点 " + bm.length + " 个");
-ok(bm.every(p => Array.isArray(p) && p.length === 8), "采样点为 8 元素数组 [x,y,z,tx,ty,tz,width,s]");
-ok(Math.abs(bm[bm.length - 1][7] - afterLen) < 1.5, "尾点 s ≈ 总长(" + bm[bm.length - 1][7].toFixed(1) + ")");
+ok(bm.every(p => Array.isArray(p) && p.length === 4), "采样点为 4 元素数组 [x,y,z,width](切线/弧长由 Godot 重建)");
+ok(exported.grid.anchor_s === 20, "导出含发车引道锚点 anchor_s=" + exported.grid.anchor_s);
+ok(Math.abs(bm[0][2] - 20) < 0.6, "引道尾端在起点线后方 20m(z=" + bm[0][2].toFixed(2) + ",首段朝 -z)");
+ok(Math.abs(bm[Math.round(exported.grid.anchor_s / 2)][0]) < 0.1 && Math.abs(bm[Math.round(exported.grid.anchor_s / 2)][2]) < 0.1,
+    "anchor 处采样即起点线 (0,0)");
 const bb = exported.baked.branch1;
 ok(bb.some(p => p[1] > 3.0), "分支含飞坡高度(y max=" + Math.max(...bb.map(p => p[1])).toFixed(1) + "m)");
 

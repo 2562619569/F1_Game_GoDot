@@ -14,6 +14,9 @@ var options := {"walls": true, "wall_height": 1.2}
 var routes: Array = []   # [{id, surface, pts, tans, widths, s_arr, radii}]
 var main: Dictionary = {}
 var length := 0.0
+## 起点线采样索引:编辑器烘焙时主路前插了发车引道(发车网格要落在铺装上),
+## 真正的起点线在 grid.anchor_s 处,发车位/起点柱/AI 车道都锚定在那里。
+var start_idx := 0
 
 static func load_json(path: String) -> TrackData:
 	var f := FileAccess.open(path, FileAccess.READ)
@@ -63,6 +66,11 @@ func _from_dict(d: Dictionary) -> void:
 	var s_arr: PackedFloat32Array = main.get("s_arr", PackedFloat32Array())
 	if s_arr.size() > 0:
 		length = s_arr[s_arr.size() - 1]
+	# 起点线锚点:吸附到 s 最接近 anchor_s 的采样(旧图无 anchor_s 时留在 0)
+	var anchor: float = float(grid_cfg.get("anchor_s", 0.0))
+	while start_idx + 1 < s_arr.size() \
+			and absf(s_arr[start_idx + 1] - anchor) < absf(s_arr[start_idx] - anchor):
+		start_idx += 1
 
 ## 切线(中心差分,与编辑器 bakeRoute 同公式)+ 逐点弧长累加
 func _compute_tans_s(route: Dictionary) -> void:
@@ -262,8 +270,8 @@ func corner_speed(s_from: float, span: float) -> float:
 ## ---------------- 发车网格(与编辑器 gridSlots 同公式) ----------------
 
 func grid_position(grid_no: int) -> Vector3:
-	var p0: Vector3 = main["pts"][0]
-	var t0 := _flat_tangent(main["tans"][0])
+	var p0: Vector3 = main["pts"][start_idx]
+	var t0 := _flat_tangent(main["tans"][start_idx])
 	var n0 := Vector3(t0.z, 0.0, -t0.x)
 	var row := (grid_no - 1) / 2
 	var side := -1.0 if grid_no % 2 == 1 else 1.0
@@ -272,7 +280,7 @@ func grid_position(grid_no: int) -> Vector3:
 
 ## 车头朝向(弧度,绕 y):节点 -Z 对齐起点切线
 func grid_heading(_grid_no: int) -> float:
-	var t: Vector3 = main["tans"][0]
+	var t: Vector3 = main["tans"][start_idx]
 	return atan2(-t.x, -t.z)
 
 ## AI 车道:相对中心线横向偏移(单号左、双号右)
@@ -320,7 +328,7 @@ func reset_point(pos: Vector3) -> Vector3:
 	return pts[idx] + Vector3(0, 1.2, 0)
 
 func start_point() -> Vector3:
-	return main["pts"][0]
+	return main["pts"][start_idx]
 
 func finish_point() -> Vector3:
 	var pts: PackedVector3Array = main["pts"]

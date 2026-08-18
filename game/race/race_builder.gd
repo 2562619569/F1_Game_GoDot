@@ -143,9 +143,11 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	root.position = _grid_position(track_data, grid_no)
 	if track_data != null:
 		root.rotation.y = track_data.grid_heading(grid_no)  # 车头朝起点切线
-	v.position = Vector3(0, 0.95, 0)
 	CarBuilder.apply(v, Match.car_cfg(cid), stats, race.env_cfg, torque_scale)
 	CarMeshBuilder.attach_visual(v, cid, appearance)  # 美术装配，缺资源自动回退占位视觉
+	# 出生即静态贴地（原为写死 0.95，各车壳挂点高度不同，倒计时冻结期间悬空坠落）。
+	# 挂点 y 须在美术装配后读取：占位回退路径不写挂点，保留场景默认值。
+	v.position = Vector3(0, _rest_height(v), 0)
 	root.add_child(v)
 	race.add_child(root)
 	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])
@@ -184,6 +186,15 @@ static func _attach_engine_audio(v: Vehicle) -> void:
 	fallback.max_db = -16.0
 	fallback.vehicle = v  # engine_sound.gd 导出类型是 Vehicle 节点
 	v.add_child(fallback)
+
+## 车身原点静止贴地高度：静止时轮心恰落回挂点 y（body.json 标定，
+## vehicle.initialize() 的挂点抬升与静态压缩抵消），地面在挂点 y − 胎半径，
+## 故原点离地 = 胎半径 − 挂点 y（前后轴取平均）。推导与
+## car_mesh_builder._setup_collision 的 ground_y 同源。留 1cm 余量：
+## 轮射线恰触地时 is_colliding 处于端点边界，浮点误差可能判空。
+static func _rest_height(v: Vehicle) -> float:
+	return ((v.front_tire_radius - v.front_left_wheel.position.y)
+			+ (v.rear_tire_radius - v.rear_left_wheel.position.y)) * 0.5 + 0.01
 
 static func _grid_position(track_data: TrackData, grid_no: int) -> Vector3:
 	if track_data != null:

@@ -72,6 +72,15 @@ func _run() -> void:
 	ok(torque_r1 > 100.0, "Car table physics applied (torque=%.0f NM)" % torque_r1)
 	ok(main.hud != null, "race HUD bound")
 
+	# ---- 4.5 发车贴地：倒计时冻结期间不应悬空（地图烘焙含发车引道 + 出生即静态姿态） ----
+	for i in 10:
+		await get_tree().physics_frame
+	var grounded := true
+	for r in main.race.racers:
+		if r.vehicle.get_wheel_contact_count() < 4:
+			grounded = false
+	ok(grounded, "all racers grounded on grid during countdown (4/4 wheel contact)")
+
 	# ---- 5. 倒计时 → GO → 物理运转 ----
 	await until(func(): return main.race.racing, 8.0)
 	ok(main.race.racing, "countdown done, race live")

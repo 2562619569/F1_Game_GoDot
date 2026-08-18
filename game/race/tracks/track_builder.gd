@@ -470,7 +470,7 @@ func _mark_quad(st: SurfaceTool, s0: float, s1: float, half_w: float, offset: fl
 
 func _build_start_posts() -> void:
 	var p := data.start_point()
-	var t := TrackData._flat_tangent(data.main["tans"][0])
+	var t := TrackData._flat_tangent(data.main["tans"][data.start_idx])
 	var n := Vector3(t.z, 0.0, -t.x)
 	var w := data.width_at(0.0) * 0.5 + 1.0
 	for sgn: float in [1.0, -1.0]:
