@@ -385,7 +385,7 @@ function turnRadius(a, b, c){
   const cross = abx*bcz - abz*bcx;
   const la=Math.hypot(abx,abz), lb=Math.hypot(bcx,bcz), lc=Math.hypot(a.x-c.x, a.z-c.z);
   if (Math.abs(cross) < 1e-9 || la < 1e-6 || lb < 1e-6) return 9999;
-  return Math.min(9999, la*lb*lc / Math.abs(cross));
+  return Math.min(9999, la*lb*lc / (2*Math.abs(cross)));
 }
 
 /* =====================================================================

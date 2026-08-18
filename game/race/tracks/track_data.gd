@@ -111,7 +111,8 @@ func _compute_radii(route: Dictionary) -> void:
 		var lc := Vector2(a.x - c.x, a.z - c.z).length()
 		if la < 1e-4 or lb < 1e-4:
 			continue
-		radii[i] = minf(9999.0, la * lb * lc / absf(cross))
+		# cross is twice the triangle area; circumradius = abc / (4A).
+		radii[i] = minf(9999.0, la * lb * lc / (2.0 * absf(cross)))
 	route["radii"] = radii
 
 ## 任意点相对主路的横向信息(辅路岔口融合/护栏开缺等均用它),字段见 route_lateral

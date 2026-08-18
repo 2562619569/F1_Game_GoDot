@@ -67,6 +67,66 @@ func _ready() -> void:
 	add_child(builder)
 	builder.build(data)
 	builder.setup(WeatherEnv.cfg(WeatherEnv.Type.SUNNY))
+
+	# 三点半径公式与急弯条带安全约束。
+	var radius_route := {"pts": PackedVector3Array([
+		Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0), Vector3(1.0, 0.0, 0.0)])}
+	data._compute_radii(radius_route)
+	var unit_radii: PackedFloat32Array = radius_route["radii"]
+	ok(absf(unit_radii[1] - 1.0) < 0.001, "三点曲率半径公式 R=1 (%.3f)" % unit_radii[1])
+
+	var road_edge_bad := 0
+	var barrier_curve_bad := 0
+	var barrier_curve_skips := 0
+	var main_pts: PackedVector3Array = data.main["pts"]
+	var main_widths: PackedFloat32Array = data.main["widths"]
+	var main_radii: PackedFloat32Array = data.main["radii"]
+	for sgn: float in [1.0, -1.0]:
+		var edges: PackedFloat32Array = builder._edge_offsets(data.main, sgn)
+		var offsets: PackedFloat32Array = builder._offsets(sgn, 8.0)
+		for i in range(1, main_pts.size() - 1):
+			var cross: float = builder._turn_cross(main_pts[i - 1], main_pts[i], main_pts[i + 1])
+			var inner := -1.0 if cross > 0.0 else 1.0
+			if absf(cross) < 1e-6 or sgn != inner:
+				continue
+			var edge_limit := maxf(0.0, float(main_radii[i]) - TrackBuilder.ROAD_INNER_RADIUS)
+			var barrier_limit := maxf(0.0, float(main_radii[i]) \
+					- float(main_widths[i]) * 0.5 - TrackBuilder.BARRIER_INNER_RADIUS)
+			if edges[i] > edge_limit + 0.001:
+				road_edge_bad += 1
+			if offsets[i] > barrier_limit + 0.001:
+				barrier_curve_bad += 1
+			if barrier_limit < TrackBuilder.OFFSET_SKIP and offsets[i] < TrackBuilder.OFFSET_SKIP:
+				barrier_curve_skips += 1
+	ok(road_edge_bad == 0, "急弯路面内缘不越过弯心(越界 %d)" % road_edge_bad)
+	ok(barrier_curve_bad == 0 and barrier_curve_skips > 0,
+			"急弯护栏不越过弯心且极小弯心断开(越界 %d,断开采样 %d)" \
+			% [barrier_curve_bad, barrier_curve_skips])
+
+	var road_winding_bad := 0
+	var road_triangles := 0
+	for road_node in get_tree().get_nodes_in_group("Road"):
+		if road_node.name == "Walls" or road_node.get_child_count() < 2:
+			continue
+		var road_mi := road_node.get_child(1) as MeshInstance3D
+		if road_mi == null:
+			continue
+		var arrays := road_mi.mesh.surface_get_arrays(0)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var winding_sign := 0.0
+		for i in range(0, vertices.size(), 3):
+			var signed_area := (vertices[i + 1] - vertices[i]).cross(vertices[i + 2] - vertices[i]).dot(normals[i])
+			if absf(signed_area) < 0.0001:
+				road_winding_bad += 1
+			elif winding_sign == 0.0:
+				winding_sign = signf(signed_area)
+			elif signf(signed_area) != winding_sign:
+				road_winding_bad += 1
+			road_triangles += 1
+		break
+	ok(road_triangles > 0 and road_winding_bad == 0,
+			"主路条带无退化/翻面三角形(%d 面,异常 %d)" % [road_triangles, road_winding_bad])
 	ok(builder.get_node_or_null("FinishGate") != null, "FinishGate 生成")
 	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+护栏)" % get_tree().get_nodes_in_group("Road").size())
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())
@@ -75,7 +135,7 @@ func _ready() -> void:
 	ok(builder.junctions.size() == 4, "岔口融合 %d 处(4 个 dirt 端头均衔主路)" % builder.junctions.size())
 
 	# --- 外退式护栏:退离路缘 + 视觉低矮 + 碰撞面远高于视觉 ---
-	# 退距下限 0.9:急弯内侧按曲率夹到 CURVE_INNER_MIN(发卡弯 R<half 时必须收紧
+	# 急弯内侧按曲率收紧到 BARRIER_INNER_RADIUS,发卡弯 R<half 时必须收紧
 	# 防偏移线自交);发卡弯附近最近投影会串到另一条腿,故另加主体占比断言
 	var walls: StaticBody3D = builder.get_node_or_null("Walls") as StaticBody3D
 	ok(walls != null, "护栏生成")

@@ -51,7 +51,8 @@ const CORRIDOR_MARGIN := 0.6       # 护栏开缺:岔口走廊判定余量
 const CORRIDOR_GRAVEL_MARGIN := 0.1  # 砂石路裁剪:贴辅路边缘留的缝
 const CORRIDOR_OVERHEAD := 2.5     # 高出主路此值的辅路段视为高架(桥/飞坡),不阻断护栏
 const CORRIDOR_CLEARANCE := 1.5    # 桥下净空:碰撞墙顶 ≤ 桥面 - 此值
-const CURVE_INNER_MIN := 1.0       # 弯内侧退距下限(按曲率夹住,防偏移线自交)
+const ROAD_INNER_RADIUS := 3.0     # 急弯内缘保留的最小半径,防路面条带翻折/重叠
+const BARRIER_INNER_RADIUS := 1.5  # 护栏偏移线在弯心外保留的最小半径
 const OFFSET_SKIP := 0.4           # 退距被收紧到低于此值时该截面不放护栏/砂石(路面已汇合)
 const FAR_S_EXCLUDE := 12.0        # 自身弯道近弧长段排除:护栏与自己路面天然重叠,不算冲突
 const FAR_MARGIN := 0.5            # 护栏线离任何远端路面截面的最小横向净距
@@ -133,6 +134,8 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 	var s_arr: PackedFloat32Array = route["s_arr"]
 	var cap_f: Array = route.get("_cap_front", [])
 	var cap_b: Array = route.get("_cap_back", [])
+	var edge_l := _edge_offsets(route, 1.0)
+	var edge_r := _edge_offsets(route, -1.0)
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -146,9 +149,8 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 	for i in n:
 		var side := TrackData._flat_normal(tans[i])
 		var up := tans[i].cross(side).normalized()
-		var w := widths[i] * 0.5
-		var va := pts[i] + side * w
-		var vb := pts[i] - side * w
+		var va := pts[i] + side * edge_l[i]
+		var vb := pts[i] - side * edge_r[i]
 		if i == 0 and cap_f.size() == 2:
 			va = cap_f[0]
 			vb = cap_f[1]
@@ -185,6 +187,42 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 				_add_strip_vert(st, poly[k])
 				_add_strip_vert(st, poly[k - 1])
 	return _body_with_mesh(st.commit(), group)
+
+## Tight curves can have a radius smaller than half the road width. A full-width
+## normal offset then crosses the curve centre and turns adjacent ribbon quads
+## inside-out. Collapse only the inner edge, and spread the reduction to nearby
+## samples without ever exceeding each sample's local curvature limit.
+func _edge_offsets(route: Dictionary, sgn: float) -> PackedFloat32Array:
+	var pts: PackedVector3Array = route["pts"]
+	var widths: PackedFloat32Array = route["widths"]
+	var radii: PackedFloat32Array = route["radii"]
+	var n := pts.size()
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		raw[i] = widths[i] * 0.5
+	for i in range(1, n - 1):
+		var cross := _turn_cross(pts[i - 1], pts[i], pts[i + 1])
+		if absf(cross) < 1e-6:
+			continue
+		# _flat_normal is expressed in x/z (z points forward as -z), so the
+		# signed x/z cross has the opposite sign from the inward normal side.
+		var inner := -1.0 if cross > 0.0 else 1.0
+		if sgn == inner:
+			raw[i] = minf(raw[i], maxf(0.0, float(radii[i]) - ROAD_INNER_RADIUS))
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		var acc := 0.0
+		var cnt := 0
+		for k in range(maxi(i - 2, 0), mini(i + 3, n)):
+			acc += raw[k]
+			cnt += 1
+		out[i] = minf(raw[i], acc / float(cnt))
+	return out
+
+func _turn_cross(a: Vector3, b: Vector3, c: Vector3) -> float:
+	return (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x)
 
 func _lerp_corner(a: Dictionary, b: Dictionary, f: float) -> Dictionary:
 	return {
@@ -523,7 +561,7 @@ func _snap_to_corridor_edge(guess: Vector3, kept: Vector3) -> Vector3:
 	return lo
 
 ## 护栏退距沿主路逐截面计算,两步收紧:
-## 1) 曲率夹紧:弯内侧偏移半径 ≤ R-half-2(防偏移线局部自交),5 点滑动平均抹台阶;
+## 1) 曲率夹紧:弯内侧偏移半径 ≤ R-half-BARRIER_INNER_RADIUS(防偏移线局部自交),5 点滑动平均抹台阶;
 ## 2) 距离感知:发卡弯两腿/相邻路段贴近时,曲率还很大护栏就已经立在对面腿的路面上了
 ##    (map_1 实测侵入 7m)。逐截面把护栏线往回收到不落入任何远端路面走廊
 ##    (|Δs|>FAR_S_EXCLUDE 的截面横向 dist ≥ half+FAR_MARGIN),梯子试探 + 二分细化;
@@ -540,13 +578,13 @@ func _offsets(sgn: float, off: float) -> PackedFloat32Array:
 		var a := pts[i - 1]
 		var b := pts[i]
 		var c := pts[i + 1]
-		var cross := (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x)
+		var cross := _turn_cross(a, b, c)
 		if absf(cross) < 1e-6:
 			continue
-		var inner := 1.0 if cross > 0.0 else -1.0
+		var inner := -1.0 if cross > 0.0 else 1.0
 		if sgn != inner:
 			continue
-		raw[i] = minf(off, maxf(CURVE_INNER_MIN, float(radii[i]) - float(widths[i]) * 0.5 - 2.0))
+		raw[i] = minf(off, maxf(0.0, float(radii[i]) - float(widths[i]) * 0.5 - BARRIER_INNER_RADIUS))
 	var out := PackedFloat32Array()
 	out.resize(n)
 	for i in n:
@@ -555,21 +593,31 @@ func _offsets(sgn: float, off: float) -> PackedFloat32Array:
 		for k in range(maxi(i - 2, 0), mini(i + 3, n)):
 			acc += raw[k]
 			cnt += 1
-		out[i] = acc / float(cnt)
+		# Smoothing may only tighten neighbouring samples. Letting it raise this
+		# sample above raw[i] would reintroduce the exact bend-centre crossing.
+		out[i] = minf(raw[i], acc / float(cnt))
 	# 距离感知收紧(只减不增,平滑后的值仍保证安全)。
-	# 冲突只发生在两腿贴近的短弧段内:粗扫(步长 6)定位冲突带,带内才逐截面梯子,
+	# 冲突只发生在两腿贴近的短弧段内:粗扫(步长 3)定位冲突带,带内才逐截面梯子,
 	# 查询量降一个量级(每回合构建赛道都要跑,调试版 GDScript 必须省着调用)
 	var s_arr: PackedFloat32Array = data.main["s_arr"]
 	var suspect := PackedByteArray()
 	suspect.resize(n)
 	suspect.fill(0)
-	for i in range(0, n, 6):
+	for i in range(0, n, 3):
 		if _hits_far_road(_barrier_point(i, sgn, out[i]), float(s_arr[i])):
 			for k in range(maxi(0, i - 8), mini(n, i + 9)):
 				suspect[k] = 1
 	for i in n:
 		if suspect[i] == 1:
 			out[i] = _far_road_limit(i, sgn, out[i], float(s_arr[i]))
+	# Far-road clipping can create an isolated 0m sample between 8m samples.
+	# Spread that reduction over the same short arc so wall/gravel quads do not
+	# form a needle when the barrier opens and resumes.
+	for pass_idx in 2:
+		var prev := out.duplicate()
+		for i in range(1, n - 1):
+			var avg := (float(prev[i - 1]) + float(prev[i]) + float(prev[i + 1])) / 3.0
+			out[i] = minf(float(prev[i]), avg)
 	return out
 
 ## 梯子试探 + 二分:返回 ≤ want 的最大安全退距
@@ -578,8 +626,9 @@ func _far_road_limit(i: int, sgn: float, want: float, s_own: float) -> float:
 		return want
 	var lo := -1.0
 	for cand: float in [4.0, 2.0, 1.0, 0.0]:
-		if not _hits_far_road(_barrier_point(i, sgn, cand), s_own):
-			lo = cand
+		var safe_cand := minf(cand, want)
+		if not _hits_far_road(_barrier_point(i, sgn, safe_cand), s_own):
+			lo = safe_cand
 			break
 	if lo < 0.0:
 		return 0.0
@@ -667,6 +716,13 @@ func _build_gravel(_off: float, offs_l: PackedFloat32Array, offs_r: PackedFloat3
 		for k in kept.size() - 1:
 			if int(kept[k + 1][0]) != int(kept[k][0]) + 1:
 				continue
+			var ia := int(kept[k][0])
+			var ib := int(kept[k + 1][0])
+			var gravel_mid: Vector3 = (kept[k][1]["p"] + kept[k][2]["p"] \
+					+ kept[k + 1][1]["p"] + kept[k + 1][2]["p"]) * 0.25
+			var gravel_s := (float(data.main["s_arr"][ia]) + float(data.main["s_arr"][ib])) * 0.5
+			if _hits_far_road(gravel_mid, gravel_s):
+				continue
 			var poly := _clip_oc([kept[k][1], kept[k][2], kept[k + 1][2], kept[k + 1][1]])
 			if poly.size() < 3:
 				continue
@@ -720,6 +776,11 @@ func _build_walls(_off: float, h: float, offs_l: PackedFloat32Array, offs_r: Pac
 				continue
 			var a: Array = kept[k]
 			var b: Array = kept[k + 1]
+			var wall_mid: Vector3 = (a[1] + b[1]) * 0.5
+			var wall_s := (float(data.main["s_arr"][int(a[0])]) \
+					+ float(data.main["s_arr"][int(b[0])])) * 0.5
+			if _hits_far_road(wall_mid, wall_s):
+				continue
 			var nrm: Vector3 = a[2]
 			_strip_quad(vis, a[1], a[1] + Vector3(0, h, 0),
 					b[1] + Vector3(0, h, 0), b[1], nrm)
