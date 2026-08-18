@@ -14,6 +14,19 @@ uniform float roughness : hint_range(0.0, 1.0) = 0.1;
 group_uniforms misc;
 uniform vec4 edge_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
 
+group_uniforms ghost;
+// 回溯幽灵「间隔像素透明」：GhostStipple 复制本材质时置 1，按 Bayer 抖动
+// 丢弃像素（默认 0 = 关，常规模具不受影响；参数与 ghost_stipple.gdshader 联动）
+uniform float ghost_stipple : hint_range(0.0, 1.0) = 0.0;
+uniform float stipple_cell_px = 2.0;
+uniform float ghost_visibility : hint_range(0.0, 1.0) = 1.0;
+
+const float bayer4[16] = float[16](
+	0.0, 8.0, 2.0, 10.0,
+	12.0, 4.0, 14.0, 6.0,
+	3.0, 11.0, 1.0, 9.0,
+	15.0, 7.0, 13.0, 5.0);
+
 float SchlickFresnel(float u) {
 	float m = 1.0 - u;
 	float m2 = m * m;
@@ -21,6 +34,13 @@ float SchlickFresnel(float u) {
 }
 
 void fragment() {
+	if (ghost_stipple > 0.5) {
+		vec2 cell = floor(FRAGCOORD.xy / max(stipple_cell_px, 1.0));
+		ivec2 c = ivec2(int(mod(cell.x, 4.0)), int(mod(cell.y, 4.0)));
+		if (ghost_visibility <= bayer4[c.y * 4 + c.x] / 16.0) {
+			discard;
+		}
+	}
 	float VdotN = dot(VIEW, NORMAL);
 	float fresnel = clamp(SchlickFresnel(VdotN), 0.0, 1.0);
 

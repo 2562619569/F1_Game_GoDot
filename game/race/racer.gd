@@ -14,7 +14,7 @@ const LAYER_CAR_DETECT := 4
 const CAR_LAYER := LAYER_CAR | LAYER_CAR_DETECT
 const CAR_MASK := LAYER_WORLD | LAYER_CAR
 
-## 幽灵视觉：整车统一的间隔像素抖纹（屏幕空间棋盘镂空 + 单色 = 整体透明，
+## 幽灵视觉：间隔像素抖纹（保留原车颜色、只降像素可见度的整体透明感，
 ## 复位保护提示；隐身技能走 PlayerCar 的 transparency 半透明，两者机制独立）
 var _stipple := GhostStipple.new()
 
@@ -59,7 +59,7 @@ func recover_to(p: Vector3) -> void:
 	vehicle.angular_velocity = Vector3.ZERO
 	vehicle.sleeping = false
 
-## 幽隐切换：碰撞层/mask + 整车统一幽灵材质（盖住轮件/灯罩/车漆全部表面）
+## 幽隐切换：碰撞层/mask + 整车抖纹变体（保留各材质原色）
 func apply_ghost(on: bool) -> void:
 	if on:
 		vehicle.collision_layer = LAYER_CAR_DETECT

@@ -146,7 +146,7 @@ func _check_race_integration() -> void:
 			"幽灵分层：仅检测层 + 只撞世界（无车-车碰撞）")
 	var mat_during: Material = _first_effective_material(pv)
 	ok(mat_during != null and GhostStipple.is_stippled(mat_during) and mat_during != mat_before,
-			"幽灵整车统一抖纹材质（间隔像素透明生效）")
+			"幽灵间隔像素抖纹（保留原色，材质换为抖纹变体）")
 	ok(pr.hint == -1, "进度搜索 hint 已作废（下次全局重搜）")
 
 	# 幽灵保护下超速闸门：CP3 路面中心 + AI 冻结 + 无车-车碰撞，速度读数稳定
