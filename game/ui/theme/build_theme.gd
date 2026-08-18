@@ -6,9 +6,13 @@ extends SceneTree
 
 const THEME_PATH := "res://game/ui/theme/modracer_theme.tres"
 const Palette := preload("res://game/ui/ui_style.gd")
+## 开源鸿蒙字体（HarmonyOS Sans SC，华为开源可商用，许可证见同目录 fonts/）
+const DEFAULT_FONT_PATH := "res://game/ui/theme/fonts/HarmonyOS_Sans_SC_Regular.ttf"
 
 func _initialize() -> void:
 	var t := Theme.new()
+	t.default_font = load(DEFAULT_FONT_PATH)
+	t.default_font_size = 16
 
 	# ---- Label 基础样式（所有标签默认：正文白 + 黑色描边） ----
 	t.set_color("font_color", "Label", Palette.TEXT)
