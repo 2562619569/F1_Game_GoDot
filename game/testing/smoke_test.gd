@@ -65,6 +65,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	ok(main.race != null and main.race.round_idx == 1, "round 1 started")
 	ok(main.current_ui == null, "car select UI hidden during race")
+	ok(main.race.countdown_hold, "garage->race seamless transition holds countdown")
 	ok(main.race.racers.size() == 4, "4 racers on grid (1 player + 3 AI)")
 	var pv: Vehicle = main.race.player_racer.vehicle
 	ok(pv.is_in_group("player_car"), "player car in player_car group")

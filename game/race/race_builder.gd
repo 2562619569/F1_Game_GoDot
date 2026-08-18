@@ -69,7 +69,8 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 			cam.trigger_shake(clampf((impact - 6.0) / 40.0, 0.03, 0.3), 0.25))
 
 	return {"track": track, "track_data": track_data, "racers": racers,
-		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque}
+		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque,
+		"camera": cam, "env_node": we}
 
 ## 赛道加载:map_id 有编辑器 JSON 则程序化生成,否则回退测试直线图
 static func _load_track(race: RaceManager, map_id: int) -> Dictionary:

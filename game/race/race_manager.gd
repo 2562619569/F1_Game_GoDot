@@ -19,15 +19,18 @@ var racers: Array[Racer] = []
 var player_racer: Racer = null
 var track: Node3D
 var track_data: TrackData = null  # 编辑器 JSON 赛道(为 null = 旧版 track_test 直线图)
+var chase_camera: Camera3D = null  # 追尾相机（车库过渡交接用）
+var env_node: WorldEnvironment = null  # 比赛环境（车库过渡的环境插值目标）
 var race_time := 0.0
 var countdown_left := 0.0
+var countdown_hold := false        # 车库→赛道相机过渡期挂起倒计时（车保持冻结）
 var racing := false
 var ended := false
 var player_torque_applied := 0.0  # 测试观测：玩家车实际应用的扭矩
 
 var _standings_acc := 0.0
 
-func setup(idx: int) -> void:
+func setup(idx: int, hold_countdown := false) -> void:
 	round_idx = idx
 	Match.round_index = idx
 	map_id = Match.upcoming_map_id
@@ -40,20 +43,33 @@ func setup(idx: int) -> void:
 	racers = out.racers
 	player_racer = out.player_racer
 	player_torque_applied = out.player_torque
+	chase_camera = out.camera
+	env_node = out.env_node
 	if track_data != null:
 		# R 倒转检查点：地图加载后按配表间隔沿主路生成
 		track_data.build_checkpoints(Match.game_cfg("checkpoint_interval"))
 
 	# --- 倒计时（车辆冻结） ---
+	countdown_hold = hold_countdown
 	countdown_left = Match.game_cfg("start_countdown")
 	for r in racers:
 		r.vehicle.freeze = true
+	if not countdown_hold:
+		countdown_tick.emit(str(int(ceili(countdown_left))))
+
+## 车库→赛道过渡完成后放行倒计时（首个 tick 补发，HUD 计数不缺拍）
+func begin_countdown() -> void:
+	if not countdown_hold or racing or ended:
+		return
+	countdown_hold = false
 	countdown_tick.emit(str(int(ceili(countdown_left))))
 
 # ---------------- 主循环 ----------------
 
 func _physics_process(delta: float) -> void:
 	if ended:
+		return
+	if countdown_hold:
 		return
 	if countdown_left > 0.0:
 		var prev := countdown_left
@@ -122,8 +138,6 @@ func _on_finish_body(body: Node3D) -> void:
 				_end_round()
 			return
 
-# ---------------- 排名 / 结算 ----------------
-
 ## R 倒转复位：限速闸门（Game 表 rewind_speed_limit，m/s）+ 未冲线 +
 ## 有检查点数据才放行；复位到已通过的最后一个检查点并进入幽灵
 ## （半透明 + 无车-车碰撞 rewind_ghost_sec 秒，穿车流复位不被撞飞）。
@@ -152,6 +166,8 @@ func _ghost_blocked(r: Racer) -> bool:
 	q.collision_mask = Racer.LAYER_CAR
 	q.exclude = [r.vehicle.get_rid()]
 	return get_world_3d().direct_space_state.intersect_shape(q, 4).size() > 0
+
+# ---------------- 排名 / 结算 ----------------
 
 func compute_order() -> Array:
 	var arr := racers.duplicate()

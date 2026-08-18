@@ -91,17 +91,145 @@ func _clear_showroom() -> void:
 
 # ---------------- 回合循环 ----------------
 
+## 车库→赛道过渡时长（秒）：相机飞行；车库层透明度逐帧跟随相机缓动进度
+const GARAGE_TRANSITION_SEC := 3.5
+
+var _garage_host: Node = null      # 过渡期间保留的选车/局间宿主场景（展台在其中）
+
 func start_round() -> void:
 	_clear_race()
-	_clear_ui()  # 隐藏选车/局间界面，比赛期间只显示竞速 HUD
+	var stage := _begin_garage_transition()
+	if stage == null:
+		_clear_ui()  # 无展台（如直连调用）：保持原硬切
 	race = RaceManager.new()
 	world.add_child(race)
-	race.setup(Match.round_index + 1)
 	hud = HudScene.instantiate()
 	hud.bind(race)  # 先绑定再入树（_ready 即可读比赛数据）
-	ui.add_child(hud)
 	race.round_ended.connect(_on_round_ended)
+	if stage != null:
+		# 无缝过渡：倒计时挂起，过渡相机接管视口，结束后交接追尾相机
+		race.setup(Match.round_index + 1, true)
+		hud.modulate.a = 0.0
+		ui.add_child(hud)
+		_transition_garage_to_race(stage)
+	else:
+		race.setup(Match.round_index + 1)
+		ui.add_child(hud)
 	flow_changed.emit("race")
+
+## 从当前混合场景（开局选车 / 局间整备）取出展台进入过渡：
+## 宿主 UI 立即失活淡出，宿主场景本体保留到过渡结束再释放。
+## 返回 null 表示当前界面没有展台（非过渡路径）。
+func _begin_garage_transition() -> CarStage:
+	var host := current_ui
+	if host == null or not ("stage" in host) or not (host.stage is CarStage):
+		return null
+	_garage_host = host
+	current_ui = null
+	for layer in host.find_children("*", "CanvasLayer", true, false):
+		layer.process_mode = Node.PROCESS_MODE_DISABLED  # 按钮立刻不可点
+		for c in layer.get_children():
+			if c is Control:
+				create_tween().tween_property(c, "modulate:a", 0.0, 0.35)
+	return host.stage
+
+## 无缝过渡（分层渲染，车全程不动、发车位也不动）：
+## 1. 车库展台整体搬进独立 SubViewport（own_world_3d + transparent_bg），
+##    自带环境/灯光在层内继续渲染；主视口渲染比赛世界，两层画面并存。
+## 2. 主视口直接复用追尾相机：摆在"车库机位的等价位姿"（车库相机相对
+##    展车的变换应用到比赛车发车位上），首帧两层画面里的车完全重合。
+## 3. 车库层相机逐帧跟随主相机（把主相机位姿按 发车位→展车 的映射搬进
+##    车库世界，FOV 同步）——飞行全程两层画面里的车严格锁定，车库墙随
+##    视角正确扫过，交叉溶解任何时刻都严丝合缝，不依赖首帧换算的精度。
+## 4. 相机向追尾静止收敛位飞行（位置插值 + 姿态 slerp + FOV 收敛，
+##    QUINT 缓动），同期车库叠加层透明淡出，赛道显露。后续要加效果
+##    （模糊/遮罩/辉光）只需对叠加层或 SubViewport 加工。
+## 5. 结束：恢复追尾相机物理更新（终点即其静止牵引目标，零跳变），
+##    HUD 淡入、倒计时放行、车库层与宿主场景释放。
+func _transition_garage_to_race(stage: CarStage) -> void:
+	var pv: Vehicle = race.player_racer.vehicle
+	var spawn := pv.global_transform
+	# 车库相机相对展车的位姿（含拖拽朝向）→ 应用到发车位 = 主视口起始机位
+	var cam_rel := stage.display_car().global_transform.affine_inverse() * stage.camera.global_transform
+	var start_xf := spawn * cam_rel
+	var start_fov := stage.camera.fov
+
+	# --- 车库入层：独立世界 + 透明背景，作为全屏叠加层盖在比赛画面上 ---
+	stage.disable_interaction()
+	var sub := SubViewport.new()
+	sub.own_world_3d = true
+	sub.transparent_bg = true
+	sub.size = get_viewport().get_visible_rect().size
+	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(sub)
+	_garage_host.remove_child(stage)
+	sub.add_child(stage)
+	var overlay := CanvasLayer.new()
+	overlay.layer = 10   # 盖住 3D 与淡出中的 HUD，低于弹窗类 UI 的常规层位
+	add_child(overlay)
+	var rect := TextureRect.new()
+	rect.texture = sub.get_texture()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	overlay.add_child(rect)
+
+	# --- 主视口相机：追尾相机暂停物理，从车库等价机位飞向静止收敛位 ---
+	var cam := race.chase_camera
+	var cam_pos := spawn.origin + spawn.basis.z * float(cam.follow_distance)
+	cam_pos.y = spawn.origin.y + float(cam.follow_height)
+	cam.look_at_from_position(cam_pos, spawn.origin, Vector3.UP)
+	var end_xf := cam.global_transform
+	var end_fov := float(cam.minimum_fov)
+	cam.set_physics_process(false)
+	cam.global_transform = start_xf
+	cam.fov = start_fov
+	cam.make_current()
+
+	# 车库层相机锁定映射：车库相机 = 展车位姿 * 发车位⁻¹ * 主相机
+	# （入层后取一次展车在层内世界的位姿作锚，之后每帧套用）
+	var layer_car_xf := stage.display_car().global_transform
+	var spawn_inv := spawn.affine_inverse()
+	var layer_cam := stage.camera
+	_sync_layer_camera(layer_cam, layer_car_xf, spawn_inv, cam)
+
+	var tw := create_tween()
+	tw.tween_method(func(w: float):
+		var q := start_xf.basis.get_rotation_quaternion().slerp(
+				end_xf.basis.get_rotation_quaternion(), w)
+		cam.global_transform = Transform3D(Basis(q),
+				start_xf.origin.lerp(end_xf.origin, w))
+		cam.fov = lerpf(start_fov, end_fov, w)
+		_sync_layer_camera(layer_cam, layer_car_xf, spawn_inv, cam)
+		# 淡出与相机共用同一缓动进度：车库层透明度逐帧 = 1 - 相机进度，
+		# 相机没动车库不淡，相机到位车库正好淡完
+		rect.modulate.a = 1.0 - w, 0.0, 1.0, GARAGE_TRANSITION_SEC) \
+		.set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(_finish_garage_transition.bind(sub, overlay))
+
+## 把主相机位姿按 发车位→展车 映射搬进车库层并同步 FOV：
+## 保证叠加层画面与主视口里的车逐帧严格重合
+func _sync_layer_camera(layer_cam: Camera3D, layer_car_xf: Transform3D,
+		spawn_inv: Transform3D, cam: Camera3D) -> void:
+	layer_cam.global_transform = layer_car_xf * spawn_inv * cam.global_transform
+	layer_cam.fov = cam.fov
+
+func _finish_garage_transition(sub: SubViewport, overlay: CanvasLayer) -> void:
+	if is_instance_valid(hud):
+		create_tween().tween_property(hud, "modulate:a", 1.0, 0.6)
+	if _garage_host != null:
+		_garage_host.queue_free()
+		_garage_host = null
+	overlay.queue_free()
+	sub.queue_free()
+	if not is_instance_valid(race) or race.chase_camera == null:
+		return
+	# 终点即追尾相机静止时的牵引目标：恢复物理更新后无跳变；
+	# 首帧 _prev_basis 取当前位姿，低通从终点继续，衔接平滑
+	var cam := race.chase_camera
+	cam.set_physics_process(true)
+	race.begin_countdown()
 
 func _on_round_ended(results: Array, rewards: Array) -> void:
 	# 等待 HUD 显示最后一帧结算提示后切界面

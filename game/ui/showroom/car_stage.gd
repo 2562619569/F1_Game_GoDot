@@ -25,6 +25,7 @@ const DISPLAY_FLOOR_Y := 0.035
 @onready var camera: Camera3D = $Camera3D
 
 var current_car_id := 0
+var interactive := true             # 过渡开始后忽略拖拽输入
 var _car: Vehicle = null        # 当前展车（静态道具：物理停用，拖拽纯旋转模型）
 var _dragging := false
 
@@ -33,6 +34,8 @@ func _ready() -> void:
 	_apply_framing()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not interactive:
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_dragging = event.pressed
 		# 按住期间捕获鼠标：快速甩动时光标冲出窗口或扫过悬浮 UI 区
@@ -124,6 +127,17 @@ func _apply_framing() -> void:
 	if framing == Framing.LEFT:
 		var right := camera.global_transform.basis.x
 		camera.look_at(FOCUS + right * focus_shift_m)
+
+# ---------------- 车库→赛道无缝过渡 ----------------
+
+## 当前展车（过渡对齐时读它的全局变换；车库整体搬入 SubViewport 后继续展示）
+func display_car() -> Vehicle:
+	return _car
+
+## 过渡开始：停掉拖拽交互，鼠标可见
+func disable_interaction() -> void:
+	interactive = false
+	_end_drag()
 
 # ---------------- 场景资源补齐（tscn 持结构，代码持资源） ----------------
 
