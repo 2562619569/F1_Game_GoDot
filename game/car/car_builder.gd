@@ -59,10 +59,13 @@ static func apply(v: Vehicle, cfg: Dictionary, stats: Dictionary, env: Dictionar
 	dirt += downforce * K_AERO_GRIP * 0.5
 	grass += downforce * K_AERO_GRIP * 0.25
 	v.coefficient_of_friction = {"Road": road, "Dirt": dirt, "Grass": grass}
+	# 轮胎刚度标度重校（与 vehicle.gd 同步）：旧 Road 10 → 峰值滑移角 ~0.4°，
+	# 抓地是开关式的，无渐进手感；新值按峰值滑移角 ~4°（完全饱和 ~12°）标定，
+	# 推头/甩尾有可感知的渐进区。松软路面刚度更低 → 滑移行程更长、更漂。
 	v.tire_stiffnesses = {
-		"Road": 10.0 * (1.0 + stats.grip_road * 0.01),
-		"Dirt": 0.5 * (1.0 + stats.grip_offroad * 0.01),
-		"Grass": 0.5,
+		"Road": 0.3 * (1.0 + stats.grip_road * 0.01),
+		"Dirt": 0.2 * (1.0 + stats.grip_offroad * 0.01),
+		"Grass": 0.15,
 	}
 	v.rolling_resistance = {
 		"Road": 1.0 * (1.0 - downforce * 0.01),

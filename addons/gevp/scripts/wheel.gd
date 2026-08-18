@@ -56,6 +56,10 @@ var toe := 0.0
 var bump_stop_multiplier := 1.0
 var wheel_to_body_torque_multiplier := 0.0
 var mass_over_wheel := 0.0
+# 本地修改：轮胎载荷敏感性——μ 随载荷增大递减（friction ∝ Fz^(1-λ)）。以整车平均
+# 轮载为基准做绝对归一（而非各轮自身静载），前重配置的车前轴静态 μ 天然更低。
+var load_sensitivity := 0.20
+var static_load_reference := 0.0
 
 var wheel_moment := 0.0
 var spin := 0.0
@@ -322,7 +326,13 @@ func process_tires(braking : bool, delta : float):
 		slip_vector = Vector2(0.0001, 0.0001)
 	
 	var cornering_stiffness := 0.5 * current_tire_stiffness * pow(contact_patch, 2.0)
-	var friction := current_cof * spring_force - (spring_force / (tire_width * contact_patch * 0.2))
+	# 本地修改：真实轮胎 μ 随载荷上升而下降，这是载荷转移改变前后轴平衡的机制——
+	# 弯中外侧轮增载的容量增益小于内侧减载的损失，轴总容量净下降；因此防倾杆
+	# 刚度、前后配重、制动载荷转移重新成为推头/甩尾的调校手段。旧公式
+	# cof*Fz - Fz/(width*patch*0.2) 两项都线性于 Fz，载荷转移对平衡完全无效。
+	# 比值夹紧 [0.05,10]：Fz→0 时乘子发散但乘积仍归零，夹紧只为防 0*INF=NaN。
+	var load_ratio := clampf(spring_force / maxf(static_load_reference, 1.0), 0.05, 10.0)
+	var friction := current_cof * pow(load_ratio, -load_sensitivity) * spring_force - (spring_force / (tire_width * contact_patch * 0.2))
 	var deflect := 1.0 / (sqrt(pow(cornering_stiffness * slip_vector.y, 2.0) + pow(cornering_stiffness * slip_vector.x, 2.0)))
 	
 	## Adds in additional longitudinal grip when braking
@@ -361,4 +371,6 @@ func get_friction(normal_force : float, surface : String) -> float:
 	var surface_cof := 1.0
 	if coefficient_of_friction.has(surface):
 		surface_cof = coefficient_of_friction[surface]
-	return surface_cof * normal_force - (normal_force / (tire_width * contact_patch * 0.2))
+	# 与 process_tires 的载荷敏感性同式（见其注释）；按传入载荷而非当前弹簧力求解
+	var load_ratio := clampf(normal_force / maxf(static_load_reference, 1.0), 0.05, 10.0)
+	return surface_cof * pow(load_ratio, -load_sensitivity) * normal_force - (normal_force / (tire_width * contact_patch * 0.2))

@@ -297,9 +297,17 @@ const AUTO_KICKDOWN_RPM := 0.92
 @export var wheel_to_body_torque_multiplier := 1.0
 ## Represents tire stiffness in the brush tire model. Higher values increase
 ## the responsiveness of the tire.
+## 本地修改：标度重校——旧默认 Road 10 会让轮胎在 ~0.4° 滑移角就饱和（开关式
+## 抓地，无渐进手感）；新默认按峰值滑移角 ~4°（完全饱和 ~12°）标定，配表请
+## 用同一量级（car_builder.gd 为准）。
 ## Surface detection uses node groups to identify the surface, so make sure
 ## your staticbodies and rigidbodies belong to one of these groups.
-@export var tire_stiffnesses := { "Road" : 10.0, "Dirt" : 0.5, "Grass" : 0.5 }
+@export var tire_stiffnesses := { "Road" : 0.3, "Dirt" : 0.2, "Grass" : 0.15 }
+## 本地修改：轮胎载荷敏感性指数 λ。摩擦 ∝ Fz^(1-λ)：载荷翻倍 μ 降 2^(-λ)
+## （0.2 → -13%）。这是载荷转移/前后配重/防倾杆能改变推头-甩尾平衡的机制，
+## 旧公式 μ 为常数，配重与侧倾转移对前后平衡完全无效。0 关闭。基准取整车
+## 平均轮载（绝对敏感），前重车前轴静态 μ 更低。
+@export var tire_load_sensitivity := 0.20
 ## A multiplier for the amount of force a tire can apply based on the surface.
 ## Surface detection uses node groups to identify the surface, so make sure
 ## your staticbodies and rigidbodies belong to one of these groups.
@@ -547,6 +555,10 @@ func initialize():
 		wheel.lateral_grip_assist = lateral_grip_assist
 		wheel.longitudinal_grip_ratio = longitudinal_grip_ratio
 		wheel.wheel_to_body_torque_multiplier = wheel_to_body_torque_multiplier
+		# 本地修改：载荷敏感性与其归一基准（整车平均轮载，四轮同值——绝对敏感，
+		# 前重车前轴静态 μ 更低；若按各轮自身静载归一，前后配重将不影响平衡）
+		wheel.load_sensitivity = tire_load_sensitivity
+		wheel.static_load_reference = vehicle_mass * 9.8 / wheel_array.size()
 	
 	var front_weight_per_wheel := vehicle_mass * front_weight_distribution * 4.9
 	var front_spring_rate := calculate_spring_rate(front_weight_per_wheel, front_spring_length, front_resting_ratio)
