@@ -126,7 +126,7 @@ func _physics_process(delta: float) -> void:
 			r.recover_to(rp)
 			r.ghost_left = maxf(r.ghost_left, rewind_ghost_sec)
 			r.apply_ghost(true)
-		# 幽灵计时：半透明 + 无车-车碰撞；到期时若与其他车仍重叠（幽灵期间
+		# 幽灵计时：间隔像素抖纹 + 无车-车碰撞；到期时若与其他车仍重叠（幽灵期间
 		# 对方可穿行甚至停进幽灵车位），推迟恢复实体，避免穿透求解把双方弹飞
 		if r.ghost_left > 0.0:
 			r.ghost_left -= delta
@@ -166,7 +166,7 @@ func _on_finish_body(body: Node3D) -> void:
 
 ## R 倒转复位：限速闸门（Game 表 rewind_speed_limit，m/s）+ 未冲线 +
 ## 有检查点数据才放行；复位到已通过的最后一个检查点并进入幽灵
-## （半透明 + 无车-车碰撞 rewind_ghost_sec 秒，穿车流复位不被撞飞）。
+## （间隔像素抖纹 + 无车-车碰撞 rewind_ghost_sec 秒，穿车流复位不被撞飞）。
 func rewind_player() -> void:
 	if player_racer == null or track_data == null or track_data.checkpoints.is_empty():
 		return

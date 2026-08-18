@@ -7,7 +7,7 @@ extends Node
 ##    严格递增、复位落点在路面内、零间隔守卫、幂等重建；
 ## 3. 真实回合世界集成：碰撞层约定（车=车层|检测层、mask=世界|车；终点门/掉落物只认
 ##    检测层——幽灵复位中冲线/拾取不失效）、倒计时拒绝、超速拒绝、低速传送
-##    （位置/姿态/速度清零/hint 作废）、检查点推进记账、幽灵半透明与分层到时恢复、
+##    （位置/姿态/速度清零/hint 作废）、检查点推进记账、幽灵间隔像素抖纹与分层到时恢复、
 ##    冲线后拒绝、跌落保护同样给幽灵。
 
 var checks := 0
@@ -137,15 +137,16 @@ func _check_race_integration() -> void:
 	pr.progress = td.checkpoints[3] + 1.0
 	pr.update_checkpoints(td)
 	ok(pr.cp_reached == 3, "检查点记账推进到 3（只进不退）")
+	var mat_before := _first_effective_material(pv)
 	race.rewind_player()
 	var pose3: Dictionary = td.checkpoint_pose(3)
 	ok(pv.global_position.distance_to(pose3["pos"]) < 3.0, "倒转传送回 CP3")
 	ok(pr.ghost_left > 4.9, "幽灵计时启动(%.1fs)" % pr.ghost_left)
 	ok(pv.collision_layer == Racer.LAYER_CAR_DETECT and pv.collision_mask == Racer.LAYER_WORLD,
 			"幽灵分层：仅检测层 + 只撞世界（无车-车碰撞）")
-	var visual := pv.find_children("*", "GeometryInstance3D", true, false)
-	ok(visual.size() > 0 and is_equal_approx((visual[0] as GeometryInstance3D).transparency, Racer.GHOST_ALPHA),
-			"幽灵半透明(%.2f)" % Racer.GHOST_ALPHA)
+	var mat_during: Material = _first_effective_material(pv)
+	ok(mat_during != null and GhostStipple.is_stippled(mat_during) and mat_during != mat_before,
+			"幽灵整车统一抖纹材质（间隔像素透明生效）")
 	ok(pr.hint == -1, "进度搜索 hint 已作废（下次全局重搜）")
 
 	# 幽灵保护下超速闸门：CP3 路面中心 + AI 冻结 + 无车-车碰撞，速度读数稳定
@@ -169,14 +170,14 @@ func _check_race_integration() -> void:
 	ok(yaw_err < 0.05 and absf(pv.global_rotation.x) < 0.01 and absf(pv.global_rotation.z) < 0.01,
 			"姿态复位（横滚/俯仰清零，车头对齐切线，误差 %.3f rad）" % yaw_err)
 
-	# 幽灵到时恢复碰撞与透明度：physics_frame 信号先于本帧 _physics_process 回调，
+	# 幽灵到时恢复碰撞与材质现场：physics_frame 信号先于本帧 _physics_process 回调，
 	# 从 process 上下文切入会少计一拍，留 6 帧余量（0.02s 到期 + restore）
 	pr.ghost_left = 0.02
 	for i in 6:
 		await get_tree().physics_frame
 	ok(pr.ghost_left <= 0.0 and pv.collision_layer == Racer.CAR_LAYER and pv.collision_mask == Racer.CAR_MASK,
 			"幽灵到期恢复碰撞层")
-	ok((visual[0] as GeometryInstance3D).transparency < 0.01, "幽灵到期恢复不透明")
+	ok(_first_effective_material(pv) == mat_before, "幽灵到期恢复原材质（抖纹变体撤下）")
 
 	# 到期时与他车重叠：推迟退出幽灵（防穿透求解把双方弹飞），分离后才恢复
 	pr.ghost_left = 1.0
@@ -213,8 +214,27 @@ func _check_race_integration() -> void:
 	for i in 3:
 		await get_tree().physics_frame
 	ok(pv.global_position.y > -1.0, "跌落拉回主路(y=%.1f)" % pv.global_position.y)
-	ok(pr.ghost_left > 0.0 and pv.collision_layer == Racer.LAYER_CAR_DETECT, "跌落保护同样进入幽灵")
+	ok(pr.ghost_left > 0.0 and pv.collision_layer == Racer.LAYER_CAR_DETECT
+			and GhostStipple.is_stippled(_first_effective_material(pv)), "跌落保护同样进入幽灵（抖纹生效）")
 	pr.ghost_left = 0.02
 	for i in 6:
 		await get_tree().physics_frame
 	ok(pv.collision_layer == Racer.CAR_LAYER, "跌落幽灵到期恢复")
+	ok(not GhostStipple.is_stippled(_first_effective_material(pv)), "跌落幽灵到期抖纹撤下")
+
+## 与 GhostStipple.apply 同规则的取材：树序首个网格的有效材质
+## （material_override → 表面 override → GLB 内置表面材质），无网格返回 null
+func _first_effective_material(root: Node3D) -> Material:
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		if mi.material_override != null:
+			return mi.material_override
+		for i in mi.mesh.get_surface_count():
+			var m: Material = mi.get_surface_override_material(i)
+			if m == null:
+				m = mi.mesh.surface_get_material(i)
+			if m != null:
+				return m
+	return null

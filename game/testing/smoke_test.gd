@@ -118,7 +118,7 @@ func _run() -> void:
 	main.race.rewind_player()
 	ok(pv.global_position.distance_to(pose["pos"]) < 3.0, "rewind teleported to last checkpoint")
 	ok(pr.ghost_left > 0.0 and pv.collision_layer == Racer.LAYER_CAR_DETECT
-			and pv.collision_mask == Racer.LAYER_WORLD, "ghost mode on (translucent, no car collision)")
+			and pv.collision_mask == Racer.LAYER_WORLD, "ghost mode on (stippled, no car collision)")
 	# 幽灵保护下沿切线加速到 30 m/s：路面中心 + AI 已冻结且无车-车碰撞，读数稳定
 	pv.linear_velocity = pv.global_transform.basis * Vector3(0, 0, -30.0)
 	for i in 3:

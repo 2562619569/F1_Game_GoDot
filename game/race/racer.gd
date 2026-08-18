@@ -14,8 +14,9 @@ const LAYER_CAR_DETECT := 4
 const CAR_LAYER := LAYER_CAR | LAYER_CAR_DETECT
 const CAR_MASK := LAYER_WORLD | LAYER_CAR
 
-## 幽灵视觉透明度（区别于隐身 0.65，半透明=复位保护提示）
-const GHOST_ALPHA := 0.5
+## 幽灵视觉：整车统一的间隔像素抖纹（屏幕空间棋盘镂空 + 单色 = 整体透明，
+## 复位保护提示；隐身技能走 PlayerCar 的 transparency 半透明，两者机制独立）
+var _stipple := GhostStipple.new()
 
 var name := ""
 var is_player := false
@@ -26,7 +27,7 @@ var finish_time := 0.0
 var progress := 0.0  # 弧长进度（旧图 = -z）
 var hint := -1       # progress_at 下次搜索的索引提示
 var cp_reached := 0  # 已通过的最后一个检查点下标（0 = 起点线，只进不退）
-var ghost_left := 0.0  # 幽灵剩余秒数（>0 = 半透明且无车-车碰撞）
+var ghost_left := 0.0  # 幽灵剩余秒数（>0 = 抖纹镂空且无车-车碰撞）
 
 func mark_finished(t: float) -> void:
 	finished = true
@@ -58,17 +59,13 @@ func recover_to(p: Vector3) -> void:
 	vehicle.angular_velocity = Vector3.ZERO
 	vehicle.sleeping = false
 
-## 幽隐切换：碰撞层/mask + 整车半透明（含轮件/灯罩等全部 GeometryInstance3D）
+## 幽隐切换：碰撞层/mask + 整车统一幽灵材质（盖住轮件/灯罩/车漆全部表面）
 func apply_ghost(on: bool) -> void:
 	if on:
 		vehicle.collision_layer = LAYER_CAR_DETECT
 		vehicle.collision_mask = LAYER_WORLD
-		_set_alpha(GHOST_ALPHA)
+		_stipple.apply(vehicle)
 	else:
 		vehicle.collision_layer = CAR_LAYER
 		vehicle.collision_mask = CAR_MASK
-		_set_alpha(0.0)
-
-func _set_alpha(a: float) -> void:
-	for child in vehicle.find_children("*", "GeometryInstance3D", true, false):
-		child.transparency = a
+		_stipple.restore()
