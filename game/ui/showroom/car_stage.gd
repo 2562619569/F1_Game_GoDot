@@ -3,8 +3,15 @@ extends Node3D
 ## 通用 3D 车辆展台（工业车库布景 + 电影化棚灯）：
 ## 从 showroom 抽出的可复用组件，选车界面 / 局间整备 / 展示间共享同一套视觉。
 ## 场景结构（环境/地面/展台/相机）在 tscn 内搭建，脚本负责补齐资源与装配展车。
+## 布景已烘焙为 tscn 实际节点（用 game/testing/car_stage_bake.tscn 生成，编辑器所见即所得）；
+## _setup_world 只作兜底——节点被误删时按代码重建。改了布景代码后重跑烘焙场景同步进 tscn。
+## PreviewCar601 是烘焙进去的编辑器预览车，_ready 时清掉，让位给 show_car 装配的真车。
 ## 对外契约：car_shown(car_id) 信号 + show_car(car_id) / refresh_car() / car_ids() / current_car_id。
 ## framing 决定构图：CENTER 车辆居中；LEFT 视点右移让车落在画面左侧（右侧留给悬浮 UI）。
+## 默认展示角度由场景定义：Camera3D 的机位（位置/FOV 原样生效，运行时只补对焦朝向）
+## 与 PreviewCar601 的朝向（_ready 读取后清掉预览车，真车首次展示沿用该朝向）；
+## default_car_yaw_deg 只是烘焙时预览车的初始摆位与无预览车时的兜底。
+## 车库后墙自动转到相机对侧，机位挪到哪个方向布景都成立。
 
 signal car_shown(car_id: int)
 
@@ -13,10 +20,11 @@ enum Framing { CENTER, LEFT }
 @export var framing: Framing = Framing.CENTER
 @export var drag_sensitivity := 0.01        # 每像素拖拽的旋转弧度
 @export var focus_shift_m := 2.6            # LEFT 构图：视点沿相机右方向平移的米数
+@export var default_car_yaw_deg := 225.0    # 烘焙预览车的初始摆位；无预览车时的首展朝向兜底
 
 const CAR_SCENE := preload("res://addons/gevp/scenes/arcade_car.tscn")
 const FOCUS := Vector3(0, 0.65, 0)          # 展车中心，所有棚灯/相机对准这里
-const GARAGE_YAW := 45.0                    # 后墙正对位于 (+X,+Z) 象限的相机
+const BACKDROP_DIST := 6.79                 # 后墙离展车中心的距离，背对相机摆放
 const DISPLAY_FLOOR_Y := 0.035
 
 @onready var world_env: WorldEnvironment = $WorldEnvironment
@@ -27,11 +35,21 @@ const DISPLAY_FLOOR_Y := 0.035
 var current_car_id := 0
 var interactive := true             # 过渡开始后忽略拖拽输入
 var _car: Vehicle = null        # 当前展车（静态道具：物理停用，拖拽纯旋转模型）
+var _default_yaw := 0.0         # 首展默认朝向（_ready 取自场景预览展车的实际旋转）
 var _dragging := false
 
 func _ready() -> void:
+	# 场景里的预览展车定义默认展示角度：记下它的朝向再清掉，让位给 show_car
+	# 装配的真车（首次展示沿用该朝向；没有预览车时退回 default_car_yaw_deg）
+	_default_yaw = deg_to_rad(default_car_yaw_deg)
+	for child in get_children():
+		if child is Vehicle and not child.is_queued_for_deletion():
+			_default_yaw = child.rotation.y
+			child.queue_free()
+			break
 	_setup_world()
 	_apply_framing()
+	_orient_backdrop()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not interactive:
@@ -69,12 +87,12 @@ func car_ids() -> Array[int]:
 	ids.sort()
 	return ids
 
-## 切换展台车辆（保留当前朝向，首次展示车头正对相机）
+## 切换展台车辆（保留当前朝向，首次展示沿用场景预览车的默认朝向）
 func show_car(car_id: int) -> void:
 	if not Settings.car.data.has(car_id):
 		push_warning("CarStage: Car 表无 %d，忽略切换" % car_id)
 		return
-	var yaw := _car.rotation.y if is_instance_valid(_car) else deg_to_rad(225.0)
+	var yaw := _car.rotation.y if is_instance_valid(_car) else _default_yaw
 	_build_car(car_id, yaw)
 	car_shown.emit(car_id)
 
@@ -82,14 +100,14 @@ func show_car(car_id: int) -> void:
 func refresh_car() -> void:
 	if current_car_id == 0 or not Settings.car.data.has(current_car_id):
 		return
-	var yaw := _car.rotation.y if is_instance_valid(_car) else deg_to_rad(225.0)
+	var yaw := _car.rotation.y if is_instance_valid(_car) else _default_yaw
 	_build_car(current_car_id, yaw)
 
 func _build_car(car_id: int, yaw: float) -> void:
 	if is_instance_valid(_car):
 		_car.queue_free()
 	var v: Vehicle = CAR_SCENE.instantiate()
-	# 车前向为 -Z，相机在 (+4.2, +4.2) 象限，yaw 225° 让车头正对相机
+	# 车前向为 -Z；默认 yaw 让车头正对默认机位，机位/朝向都在编辑器里可调
 	v.rotation = Vector3(0, yaw, 0)
 	CarBuilder.apply(v, Settings.car.data[car_id], Match.stats_for_car(car_id, Match.equipped), WeatherEnv.cfg(WeatherEnv.Type.SUNNY), 1.0)
 	CarMeshBuilder.attach_visual(v, car_id, Match.appearance_for_car(car_id, Match.equipped))
@@ -119,10 +137,10 @@ func _make_static_display(v: Vehicle) -> void:
 
 # ---------------- 相机构图 ----------------
 
-## 收窄视野出产品摄影感；LEFT 构图先把相机对中取得右方向，再把视点右移，
+## 相机位置/FOV 完全由 tscn 的 Camera3D 节点决定（编辑器里直接摆机位），这里只补对焦：
+## 居中看车并微俯。LEFT 构图先把相机对中取得右方向，再把视点右移，
 ## 车辆随之落到画面左三分之一（右侧整块留给悬浮 UI）
 func _apply_framing() -> void:
-	camera.fov = 49.0
 	camera.look_at(FOCUS)
 	if framing == Framing.LEFT:
 		var right := camera.global_transform.basis.x
@@ -161,9 +179,9 @@ func _setup_world() -> void:
 		env.ssao_radius = 1.4
 		env.ssil_enabled = true
 		env.ssil_intensity = 0.7
-		env.ssr_enabled = true
-		env.ssr_fade_in = 0.2
-		env.ssr_fade_out = 1.5
+		# Transparent SubViewports disable SSR. Keep the showroom on the same
+		# rendering path from its first frame so reparenting cannot change it.
+		env.ssr_enabled = false
 		env.fog_enabled = true
 		env.fog_light_color = Color(0.025, 0.026, 0.027)
 		env.fog_density = 0.006
@@ -198,14 +216,10 @@ func _setup_world() -> void:
 	_setup_camera_post()
 	_setup_haze()
 
-## Focus stays on the display car; only the distant wall and props receive a mild blur.
+## Transparent SubViewports do not support camera DoF. Leaving it disabled in
+## the showroom avoids an exposure/focus pop when the transition starts.
 func _setup_camera_post() -> void:
-	var attributes := CameraAttributesPractical.new()
-	attributes.dof_blur_far_enabled = true
-	attributes.dof_blur_far_distance = 8.2
-	attributes.dof_blur_far_transition = 4.8
-	attributes.dof_blur_amount = 0.04
-	world_env.camera_attributes = attributes
+	world_env.camera_attributes = null
 
 ## 主光模拟车库高窗射入的暖白光，窄顶灯拉车顶高光；冷色弱补光仅托住背光面。
 ## 只有主光和顶灯投影，让车辆、轮胎和周边道具形成清晰接地关系。
@@ -267,6 +281,19 @@ func _setup_ground_collision() -> void:
 func _setup_platform() -> void:
 	pass
 
+## 后墙背对相机摆放：机位在编辑器里挪到任意方向，运行时布景都自动转到车的另一侧
+## （编辑器里挪完机位可手动转 Backdrop 节点预览对齐效果）。
+func _orient_backdrop() -> void:
+	var backdrop := get_node_or_null("Backdrop")
+	if backdrop == null:
+		return
+	var dir := Vector2(camera.position.x, camera.position.z)
+	if dir.length_squared() < 0.001:
+		dir = Vector2(1.0, 1.0)   # 相机几乎在车正上方时退回默认 (+X,+Z) 象限
+	dir = dir.normalized()
+	backdrop.rotation.y = atan2(dir.x, dir.y)
+	backdrop.position = Vector3(-dir.x * BACKDROP_DIST, 0.0, -dir.y * BACKDROP_DIST)
+
 ## 工业车库后墙：深色波纹钢板、立柱、桁架和顶灯。道具全部放在车辆后方，
 ## 既形成参考图里的工作间纵深，又不会遮挡展车和底部操作区域。
 func _setup_backdrop() -> void:
@@ -275,8 +302,6 @@ func _setup_backdrop() -> void:
 	var backdrop := Node3D.new()
 	backdrop.name = "Backdrop"
 	add_child(backdrop)
-	backdrop.rotation_degrees.y = GARAGE_YAW
-	backdrop.position = Vector3(-4.8, 0.0, -4.8)
 	var wall := _box(backdrop, "Wall", Vector3(0, 3.0, 0), Vector3(17.0, 6.0, 0.24), Color(0.085, 0.083, 0.077), 0.88)
 	var wall_mat := wall.material_override as StandardMaterial3D
 	wall_mat.emission_enabled = true
@@ -333,6 +358,8 @@ func _setup_garage_props(backdrop: Node3D) -> void:
 
 ## Sparse, slow smoke stays behind the car and gives the light pools a little movement.
 func _setup_haze() -> void:
+	if get_node_or_null("AtmosphericHaze") != null:
+		return
 	var haze := Node3D.new()
 	haze.name = "AtmosphericHaze"
 	add_child(haze)
@@ -401,6 +428,8 @@ func _add_smoke_emitter(parent: Node3D, pos: Vector3, extents: Vector3, particle
 	parent.add_child(particles)
 
 func _setup_floor_details() -> void:
+	if get_node_or_null("FloorDetails") != null:
+		return
 	var details := Node3D.new()
 	details.name = "FloorDetails"
 	add_child(details)
