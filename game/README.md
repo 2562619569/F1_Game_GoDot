@@ -87,7 +87,8 @@ game/
 # 升挡转速下坠自检（换挡窗口内 motor_rpm 收敛到新挡匹配转速）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/shift_rev_check.gd
 
-# 自动换挡决策自检（纵向仿真驱动真实 process_transmission：上坡不卡挡/小油门早升挡/地板油踢降）
+# 自动换挡决策自检（纵向仿真驱动真实 process_transmission：上坡不卡挡/小油门早升挡/
+# 地板油踢降/重刹级联降挡/弯中抑制升挡/牵引力曲线自适应换挡表/油门与点刹微抖防振荡）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/shift_logic_check.gd
 
 # 碰撞体检（美术装配后碰撞体重建为贴地底盘低盒 + 撞墙不穿不翻 + 接地防翻回正）

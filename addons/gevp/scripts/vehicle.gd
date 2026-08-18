@@ -153,21 +153,38 @@ extends RigidBody3D
 @export var automatic_time_between_shifts := 1000.0
 
 ## --- 自动换挡线（均占红线 max_rpm 的比例）---
-## 全油门升挡点取 0.95：长上坡的阻力平衡点常贴在红线下方（如 601 的 5 挡在 7%
-## 坡平衡在 0.97 红线），严格 ">max_rpm" 永远差一点而卡挡（加速停滞且不换挡）；
-## 该点已越过功率峰（扭矩曲线峰值 0.62、功率峰约 0.93 红线），提前升挡不损失加速。
+## 全油门升挡点按"牵引力曲线交点"逐挡计算（见 _ensure_shift_schedule）：
+## 当前挡轮上扭矩被高一挡反超时升挡，交点在红线之后则贴红线。本常量是交点的
+## 封顶：长上坡的阻力平衡点常贴在红线下方（601 的 5 挡在 7% 坡平衡在 0.97 红线），
+## 严格贴红线会永远差一点而卡挡；且该点已越过功率峰，提前升挡不损失加速。
 const AUTO_UPSHIFT_MAX := 0.95
+## 低挡短换挡封顶（第 1/2 挡的全油门升挡点）：低挡轮上推力过剩——实际受
+## 驱动轮打滑与 0.3s 断油换挡窗口侵蚀，贴红区的瞬时推力优势兑现不了，
+## 只剩啸叫与打滑；1/2 挡提前封顶，出脚更跟脚。高挡推力稀缺（风阻当道），
+## 仍用满交点。挡位数多于本表时，后续挡用 AUTO_UPSHIFT_MAX。
+const AUTO_SHORT_SHIFT_CAPS: Array[float] = [0.75, 0.82]
 ## 小油门升挡点：油门越浅升挡越早，巡航不拖到红线才换挡。
 const AUTO_UPSHIFT_MIN := 0.45
 ## 油门低于该值时按该值计算升挡线，松油滑行不过早升挡而丢失拽挡制动。
 const AUTO_COAST_THROTTLE := 0.30
-## 降挡线 = 升挡线 × 该比例（随油门一起缩放，保证升降挡之间有迟滞不振荡）。
+## --- 降挡线（落点=降完后目标挡的转速，全部以目标挡自己的升挡线为基准）---
+## 任何模式的落点都必须明显低于目标挡的升挡线：迟滞不够宽时，速度轻微波动
+## 或油门跨过踢降阈值就会"升完立刻降回"来回换挡。
+## 巡航降挡：目标挡升挡线 × 0.72（宽迟滞）。
 const AUTO_DOWNSHIFT_RATIO := 0.72
-## 地板油踢降（kickdown）：降到低一挡后转速不超过该红线比例（防超转），
-## 且仅当当前转速明显低于升挡线（闷挡无力）时触发。必须低于 AUTO_UPSHIFT_MAX，
-## 否则全油门刚升完挡（低一挡转速=升挡线）就会被立刻踢回去。
+## 地板油踢降：落点 ≤ 目标挡升挡线 − 0.15 红线（余量足够宽，升回去要花时间，
+## 不会快速往复），且封顶 0.92 红线（防超转）；仅当前挡转速明显低于升挡线
+## （闷挡无力）时触发。
 const AUTO_KICKDOWN_THROTTLE := 0.85
+const AUTO_KICKDOWN_MARGIN := 0.15
 const AUTO_KICKDOWN_RPM := 0.92
+## 重刹级联（拽挡制动）：踏板超过 AUTO_BRAKE_CASCADE_PEDAL 才武装，落点=
+## 目标挡全油门升挡线（制动中升挡被抑制，不存在升完降回的问题；松刹车
+## 恢复油门后自然从功率带起步）。轻点刹不武装：点刹-回油不该往复换挡。
+const AUTO_BRAKE_CASCADE_PEDAL := 0.35
+## 弯中抑制升挡：侧向速度超过该值（m/s）视为转弯中，暂缓升挡防扭矩扰动
+## 破坏循迹；转速逼近断油区（≥0.99 红线）仍强制升挡兜底。
+const AUTO_CORNER_LAT_SPEED := 4.0
 ## Drivetrain inertia
 @export var gear_inertia := 0.02
 
@@ -410,6 +427,9 @@ var max_clutch_torque := 0.0
 var drive_axles_inertia := 0.0
 var complete_shift_delta_time := 0.0
 var last_shift_delta_time := 0.0
+## 换挡表缓存：每挡的全油门升挡转速（牵引力曲线交点，键控 (max_rpm, 齿比) 失效重算）
+var _shift_schedule_key := ""
+var _auto_upshift_rpms: Array[float] = []
 var average_drive_wheel_radius := 0.0
 var current_torque_split := 0.0
 var true_torque_split := 0.0
@@ -886,6 +906,43 @@ func process_clutch(delta : float):
 	
 	motor_rpm = new_rpm
 
+func _torque_factor(rpm_ratio: float) -> float:
+	if torque_curve == null:
+		return 1.0
+	return torque_curve.sample_baked(clampf(rpm_ratio, 0.0, 1.0))
+
+## 按牵引力曲线交点计算每挡的全油门升挡转速：
+## 在转速比例 f 处升挡，当且仅当高一挡落点（f·r_{i+1}/r_i）的轮上扭矩追平当前挡
+## —— T(f)·r_i ≤ T(f·r_{i+1}/r_i)·r_{i+1}；交点在红线之后则贴红线。
+## 交点由最小搜索得出，封顶 AUTO_UPSHIFT_MAX（防坡道平衡点贴红线下方卡挡）。
+## 扭矩曲线 / 齿比 / 红线改动时按键自动重算（改配无需动决策代码）。
+func _ensure_shift_schedule() -> void:
+	var key := "%.0f|%d" % [max_rpm, gear_ratios.size()]
+	for g in gear_ratios:
+		key += ",%.3f" % g
+	key += "|%d" % (torque_curve.get_instance_id() if torque_curve != null else 0)
+	if key == _shift_schedule_key:
+		return
+	_shift_schedule_key = key
+	_auto_upshift_rpms.clear()
+	for i in gear_ratios.size():
+		var shift_f := 1.0
+		if i + 1 < gear_ratios.size():
+			var ratio_now: float = gear_ratios[i]
+			var ratio_next: float = gear_ratios[i + 1]
+			var f := 0.35
+			while f < 1.0:
+				var f_next := f * ratio_next / ratio_now
+				if f_next < 1.0 and _torque_factor(f) * ratio_now <= _torque_factor(f_next) * ratio_next:
+					shift_f = f
+					break
+				f += 0.01
+		## 低挡短换挡：1/2 挡按封顶表提前，其余挡封顶 AUTO_UPSHIFT_MAX
+		var cap := AUTO_UPSHIFT_MAX
+		if i < AUTO_SHORT_SHIFT_CAPS.size():
+			cap = AUTO_SHORT_SHIFT_CAPS[i]
+		_auto_upshift_rpms.append(max_rpm * minf(shift_f, cap))
+
 func process_transmission() -> void:
 	if is_shifting:
 		if delta_time > complete_shift_delta_time:
@@ -912,14 +969,38 @@ func process_transmission() -> void:
 			if current_gear - 1 > 0:
 				previous_gear_rpm = get_gear_ratio(current_gear - 1) * maxf(drivetrain_spin, ideal_wheel_spin) * ANGULAR_VELOCITY_TO_RPM
 
-			## 换挡线随油门深度缩放：全油门贴近红线（留余量防卡挡），小油门提前升挡
+			## 升挡线：每挡用牵引力曲线交点算全油门升挡点（自适应扭矩曲线/齿比/
+			## 红线的改动），再随油门深度向 AUTO_UPSHIFT_MIN 缩放
+			_ensure_shift_schedule()
 			var shift_throttle := clampf(maxf(throttle_amount, AUTO_COAST_THROTTLE), 0.0, 1.0)
-			var upshift_rpm := max_rpm * lerpf(AUTO_UPSHIFT_MIN, AUTO_UPSHIFT_MAX, shift_throttle)
-			var downshift_rpm := upshift_rpm * AUTO_DOWNSHIFT_RATIO
+			var has_schedule := _auto_upshift_rpms.size() == gear_ratios.size()
+			var wot_upshift_rpm := max_rpm * AUTO_UPSHIFT_MAX
+			if current_gear > 0 and has_schedule:
+				wot_upshift_rpm = _auto_upshift_rpms[current_gear - 1]
+			var upshift_rpm := lerpf(max_rpm * AUTO_UPSHIFT_MIN, wot_upshift_rpm, shift_throttle)
+			## 目标挡（低一挡）的升挡线：所有降挡模式的落点都以它为基准，
+			## 保证落点明显低于目标挡自己的升挡线（宽迟滞），任何模式组合都
+			## 不会"升完立刻降回"来回振荡。
+			var target_upshift_rpm := upshift_rpm
+			var target_wot_upshift_rpm := max_rpm * AUTO_UPSHIFT_MAX
+			if current_gear >= 2 and has_schedule:
+				target_upshift_rpm = lerpf(max_rpm * AUTO_UPSHIFT_MIN, _auto_upshift_rpms[current_gear - 2], shift_throttle)
+				target_wot_upshift_rpm = _auto_upshift_rpms[current_gear - 2]
+			## 弯中（侧向速度大）暂缓升挡防扭矩扰动，逼近断油区仍放行兜底；
+			## 制动中同样抑制升挡（减速意图，升完立刻要级联降回，无意义）
+			var cornering := speed > 8.0 and absf(local_velocity.x) > AUTO_CORNER_LAT_SPEED \
+					and current_ideal_gear_rpm < max_rpm * 0.99
+			var upshift_blocked := cornering or brake_amount > 0.05
+			## 换挡冷却（完成一次换挡到允许下一次决策的最小间隔）：迟滞线挡不住
+			## 贴线微抖，用秒级冷却兜底（真实 TCU 的 minimum time in gear）；
+			## 重刹级联中减半保持敏捷。automatic_time_between_shifts 单位毫秒。
+			var shift_cooldown := maxf(shift_time, automatic_time_between_shifts * 0.001)
+			if brake_amount > AUTO_BRAKE_CASCADE_PEDAL:
+				shift_cooldown = maxf(shift_time, shift_cooldown * 0.5)
 
 			if current_gear < gear_ratios.size():
 				if current_gear > 0:
-					if delta_time - last_shift_delta_time > shift_time:
+					if not upshift_blocked and delta_time - last_shift_delta_time > shift_cooldown:
 						if current_ideal_gear_rpm > upshift_rpm:
 							shift(1)
 						elif current_ideal_gear_rpm > upshift_rpm * 0.8 and current_real_gear_rpm > upshift_rpm:
@@ -928,11 +1009,19 @@ func process_transmission() -> void:
 					shift(1)
 			if current_gear - 1 > 0:
 				if current_gear > 1:
-					## 地板油踢降：放宽降挡线（只要降挡后不超转），出弯再加速不闷高挡
-					var kickdown := throttle_amount > AUTO_KICKDOWN_THROTTLE \
-							and current_ideal_gear_rpm < upshift_rpm * 0.9
-					if previous_gear_rpm < (max_rpm * AUTO_KICKDOWN_RPM if kickdown else downshift_rpm):
-						if delta_time - last_shift_delta_time > shift_time:
+					## 降挡线（按优先级，落点均为目标挡转速）：
+					## - 重刹级联（踏板>0.35 才武装）：目标挡全油门线，出弯在功率带
+					## - 地板油踢降（闷挡时）：目标挡升挡线 − 0.15 红线，封顶 0.92 防超转
+					## - 巡航迟滞：目标挡升挡线 × 0.72
+					var downshift_line := target_upshift_rpm * AUTO_DOWNSHIFT_RATIO
+					if brake_amount > AUTO_BRAKE_CASCADE_PEDAL:
+						downshift_line = target_wot_upshift_rpm
+					elif throttle_amount > AUTO_KICKDOWN_THROTTLE \
+							and current_ideal_gear_rpm < upshift_rpm * 0.9:
+						downshift_line = minf(max_rpm * AUTO_KICKDOWN_RPM,
+								target_upshift_rpm - max_rpm * AUTO_KICKDOWN_MARGIN)
+					if previous_gear_rpm < downshift_line:
+						if delta_time - last_shift_delta_time > shift_cooldown:
 							shift(-1)
 		
 		if absf(current_gear) <= 1 and brake_input > 0.75:
