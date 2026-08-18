@@ -9,6 +9,7 @@ signal race_started
 signal loot_collected(part_id: int)
 signal standings_updated(order: Array)
 signal toast(text: String)
+signal player_finished(rank: int, finish_time: float)
 signal round_ended(results: Array, rewards: Array)
 
 var round_idx := 1
@@ -49,11 +50,9 @@ func setup(idx: int, hold_countdown := false) -> void:
 		# R 倒转检查点：地图加载后按配表间隔沿主路生成
 		track_data.build_checkpoints(Match.game_cfg("checkpoint_interval"))
 
-	# --- 倒计时（车辆冻结） ---
+	# --- 倒计时（只冻结车辆控制；车体出生抬高后已自由落地静置，不再冻结锚固） ---
 	countdown_hold = hold_countdown
 	countdown_left = Match.game_cfg("start_countdown")
-	for r in racers:
-		r.vehicle.freeze = true
 	if not countdown_hold:
 		countdown_tick.emit(str(int(ceili(countdown_left))))
 
@@ -63,6 +62,26 @@ func begin_countdown() -> void:
 		return
 	countdown_hold = false
 	countdown_tick.emit(str(int(ceili(countdown_left))))
+
+## 发车落地等待：出生抬高（RaceBuilder.SPAWN_DROP）的车靠悬挂自由沉降，
+## 全部车接地且近乎静止后返回。车库过渡的起始机位须按落定位取——
+## 飞行全程两层画面里的车才锁得住。超时兜底放行不阻塞流程；
+## 落地后不锚固，车全程以物理静置在发车位上。
+const GRID_SETTLE_SEC := 3.0
+const GRID_SETTLE_CALM_FRAMES := 10
+
+func settle_grid() -> void:
+	var calm := 0
+	var t := 0.0
+	while t < GRID_SETTLE_SEC and calm < GRID_SETTLE_CALM_FRAMES:
+		var still := true
+		for r in racers:
+			if r.vehicle.get_wheel_contact_count() < 3 or r.vehicle.linear_velocity.length() > 0.3:
+				still = false
+				break
+		calm = calm + 1 if still else 0
+		await get_tree().physics_frame
+		t += get_physics_process_delta_time()
 
 # ---------------- 主循环 ----------------
 
@@ -82,8 +101,9 @@ func _physics_process(delta: float) -> void:
 			racing = true
 			race_started.emit()
 			for r in racers:
-				r.vehicle.freeze = false
 				r.ctrl.frozen = false
+				# 静置超时的车会休眠且 apply_force 不唤醒（同 rewind_to），GO 须显式唤醒
+				r.vehicle.sleeping = false
 		return
 	if not racing:
 		return
@@ -134,6 +154,12 @@ func _on_finish_body(body: Node3D) -> void:
 			var pos := order.find(r) + 1
 			toast.emit("%s finished  P%d  (%.1fs)" % [r.name, pos, race_time])
 			standings_updated.emit(order)
+			if r.is_player:
+				player_finished.emit(pos, race_time)
+				# 玩家冲线即结束本回合；未冲线的 AI 按当前进度记为 DNF，
+				# 不再让玩家等待整场队列跑完才进入改装。
+				_end_round()
+				return
 			if racers.all(func(x): return x.finished):
 				_end_round()
 			return

@@ -11,9 +11,16 @@ const CAMERA_SCRIPT := preload("res://game/race/smooth_chase_camera.gd")
 const ENGINE_SOUND := preload("res://addons/gevp/scenes/engine_sound.tscn")
 const PLAYER_SCRIPT := preload("res://game/car/player_car.gd")
 const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
+const COLLISION_KICK := preload("res://game/car/collision_kick.gd")
 
 const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
+
+## 出生离地净空：车身抬到静态贴地位之上该高度，靠悬挂自由沉降落地。
+## 与"出生即静态贴地"的差别：地图重烘焙后发车位与路面可能互嵌毫米级，
+## 贴地出生在解冻瞬间会被求解器弹出冲量；抬高出生从分离状态落回，
+## 任何嵌差都化为一次正常落地。生成后不冻结不锚固，落地即静置。
+const SPAWN_DROP := 0.4
 
 ## 装配整场回合世界。finish_cb / loot_cb 为冲线与拾取信号回调（由 RaceManager 注入）。
 ## 环境取 race.env_cfg（地图 env 文件合成产物，见 WeatherEnv.load_map_env）。
@@ -54,12 +61,12 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	cam.global_position = player_racer.vehicle.global_position + Vector3(0, 3, 9)
 	cam.follow_this = player_racer.vehicle
 
-	# 碰撞震屏：PVC 自带 trigger_shake（无需另找模块），车身开启接触上报，
-	# 按撞击相对速度映射强度/时长，轻蹭（<6 m/s）不触发；
-	# cam_shake 总开关在相机内门控，脉冲与持续震动源一并生效/关闭
+	# 碰撞震屏：PVC 自带 trigger_shake（无需另找模块），车身开启接触上报
+	# （contact_monitor/max_contacts_reported 已由 CollisionKick 统一开启，
+	# body_entered 是多播信号，本接线与冲击放大互不影响），按撞击相对速度映射
+	# 强度/时长，轻蹭（<6 m/s）不触发；cam_shake 总开关在相机内门控，
+	# 脉冲与持续震动源一并生效/关闭
 	var pv := player_racer.vehicle
-	pv.contact_monitor = true
-	pv.max_contacts_reported = 4
 	pv.body_entered.connect(func(body: Node) -> void:
 		var rel := pv.linear_velocity
 		if body is RigidBody3D:
@@ -153,9 +160,20 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	v.collision_layer = Racer.CAR_LAYER
 	v.collision_mask = Racer.CAR_MASK
 	CarMeshBuilder.attach_visual(v, cid, appearance)  # 美术装配，缺资源自动回退占位视觉
-	# 出生即静态贴地（原为写死 0.95，各车壳挂点高度不同，倒计时冻结期间悬空坠落）。
-	# 挂点 y 须在美术装配后读取：占位回退路径不写挂点，保留场景默认值。
-	v.position = Vector3(0, _rest_height(v), 0)
+	# 车-车碰撞冲击放大（Game 表 bump_* 可调）：双方各挂一份、各推自己一记，
+	# 撞点夹取进碰撞盒求力矩 → 角落撞甩尾、正撞硬推（见 collision_kick.gd）
+	var kick := COLLISION_KICK.new()
+	kick.name = "CollisionKick"
+	v.add_child(kick)
+	kick.setup(v, {
+		"strength": Match.game_cfg("bump_strength"),
+		"min_speed": Match.game_cfg("bump_min_speed"),
+		"max_speed": Match.game_cfg("bump_max_speed"),
+		"yaw": Match.game_cfg("bump_yaw"),
+	})
+	# 出生抬高 SPAWN_DROP（见常量注释）：挂点 y 须在美术装配后读取，
+	# 占位回退路径不写挂点，保留场景默认值。
+	v.position = Vector3(0, _rest_height(v) + SPAWN_DROP, 0)
 	root.add_child(v)
 	race.add_child(root)
 	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])

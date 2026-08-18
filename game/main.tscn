@@ -8,3 +8,4 @@ script = ExtResource("1_main")
 [node name="World" type="Node3D" parent="."]
 
 [node name="UI" type="CanvasLayer" parent="."]
+layer = 2

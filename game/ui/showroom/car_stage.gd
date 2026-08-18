@@ -157,6 +157,9 @@ func disable_interaction() -> void:
 	interactive = false
 	_end_drag()
 
+func enable_interaction() -> void:
+	interactive = true
+
 # ---------------- 场景资源补齐（tscn 持结构，代码持资源） ----------------
 
 func _setup_world() -> void:

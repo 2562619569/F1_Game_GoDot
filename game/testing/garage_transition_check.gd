@@ -54,13 +54,15 @@ func _run() -> void:
 	var car_xf := stage.display_car().global_transform
 	var cam_xf := stage.camera.global_transform
 
-	# ---- 确认选车：过渡应立即开始（比赛建立 + 倒计时挂起 + 车库入层） ----
+	# ---- 确认选车：比赛建立 + 倒计时挂起；过渡立即开始，车辆并行落地 ----
 	main.current_ui.confirm_btn.pressed.emit()
 	await get_tree().process_frame
 	ok(main.race != null and main.race.round_idx == 1, "round 1 built on confirm")
 	ok(main.race.countdown_hold, "countdown held during transition")
 	ok(main.current_ui == null, "car select UI detached from ui tracking")
 	ok(main._garage_host != null, "garage host kept alive for transition")
+	ok(await until(func(): return main.find_children("*", "SubViewport", false, false).size() > 0),
+			"transition starts without waiting for grid settle")
 
 	# ---- 分层结构：车库在 SubViewport 叠加层里继续渲染 ----
 	var sub: SubViewport = null
@@ -71,17 +73,15 @@ func _run() -> void:
 	var moved_stage := sub.get_node_or_null("CarStage") if sub != null else null
 	ok(moved_stage == stage, "CarStage reparented into SubViewport")
 	ok(stage.display_car().visible, "display car stays visible in garage layer")
-	var overlay := null
+	var overlay: CanvasLayer = null
 	for c in main.get_children():
 		if c is CanvasLayer and (c as CanvasLayer).layer == 10:
 			overlay = c
 	ok(overlay != null and overlay.get_child_count() == 1, "garage overlay layer composited full-screen")
-	# 组合过渡 shader：车库层光带扫描 + 全屏径向变焦（盖在其上）
-	var sweep_mat: ShaderMaterial = (overlay.get_child(0) as Control).material as ShaderMaterial \
-			if overlay != null and overlay.get_child(0) is Control else null
-	ok(sweep_mat != null and sweep_mat.shader.resource_path.ends_with("garage_sweep.gdshader"),
-			"garage layer uses sweep shader")
-	var rush_layer := null
+	var garage_rect: TextureRect = overlay.get_child(0) as TextureRect if overlay != null else null
+	ok(garage_rect != null and garage_rect.material == null,
+			"garage layer uses a direct opacity crossfade")
+	var rush_layer: CanvasLayer = null
 	for c in main.get_children():
 		if c is CanvasLayer and (c as CanvasLayer).layer == 11:
 			rush_layer = c
@@ -101,33 +101,31 @@ func _run() -> void:
 			expected.basis.get_rotation_quaternion())
 	ok(qd < 0.02, "start orientation matches garage viewpoint (angle=%.3frad)" % qd)
 
-	# ---- 过渡期：车不动 + 倒计时挂起 + 车库层相机逐帧锁定主相机 ----
+	# ---- 过渡期：车辆可完成落地 + 倒计时挂起 + 车库层相机逐帧锁定主相机 ----
 	for i in 20:
 		await get_tree().physics_frame
-	ok(pv.freeze, "player car frozen during transition")
-	ok(pv.global_position.distance_to(spawn.origin) < 0.01, "player car did not move")
+	ok(not pv.freeze, "player car live on grid (no freeze/anchor after spawn)")
+	ok(pv.global_position.distance_to(spawn.origin) < 0.6, "player car settles within spawn drop")
 	ok(main.race.countdown_left >= float(Match.game_cfg("start_countdown")) - 1.0,
 			"countdown not ticking while held")
 	var layer_car_xf: Transform3D = moved_stage.display_car().global_transform
-	var expect_layer: Transform3D = layer_car_xf * spawn.affine_inverse() * cam.global_transform
+	var expect_layer: Transform3D = layer_car_xf * pv.global_transform.affine_inverse() * cam.global_transform
 	ok(moved_stage.camera.global_position.distance_to(expect_layer.origin) < 0.05,
 			"garage layer camera locked to main camera (d=%.3fm)" \
 					% moved_stage.camera.global_position.distance_to(expect_layer.origin))
 	ok(absf(moved_stage.camera.fov - cam.fov) < 0.01, "garage layer FOV synced")
-	var sweep_progress := float(sweep_mat.get_shader_parameter("progress"))
+	var garage_alpha := garage_rect.modulate.a
 	await get_tree().create_timer(0.15).timeout
-	var sweep_progress2 := float(sweep_mat.get_shader_parameter("progress")) \
-			if is_instance_valid(sweep_mat) else 1.0
-	ok(sweep_progress >= 0.0 and sweep_progress2 > sweep_progress,
-			"transition shader progress advances with camera flight (%.2f -> %.2f)" \
-					% [sweep_progress, sweep_progress2])
+	var garage_alpha2 := garage_rect.modulate.a if is_instance_valid(garage_rect) else 0.0
+	ok(garage_alpha2 < garage_alpha,
+			"garage opacity falls with camera flight (%.2f -> %.2f)" % [garage_alpha, garage_alpha2])
 
 	# ---- 过渡结束：车库层释放、追尾相机在收敛位、HUD 淡入、倒计时放行 ----
 	ok(await until(func(): return not main.race.countdown_hold), "countdown released after transition")
 	ok(main._garage_host == null, "garage host freed after transition")
 	var layer_gone := true
 	for c in main.get_children():
-		if c is SubViewport or (c is CanvasLayer and ((c as CanvasLayer).layer == 10 or (c as CanvasLayer).layer == 11)):
+		if c is SubViewport or (c is CanvasLayer and ((c as CanvasLayer).layer == 10 or (c as CanvasLayer).layer == 11 or (c as CanvasLayer).layer == 12)):
 			layer_gone = false
 	ok(layer_gone, "garage SubViewport/overlay/rush layers freed after transition")
 	var dist := float(cam.follow_distance)

@@ -127,6 +127,33 @@ func _ready() -> void:
 		break
 	ok(road_triangles > 0 and road_winding_bad == 0,
 			"主路条带无退化/翻面三角形(%d 面,异常 %d)" % [road_triangles, road_winding_bad])
+
+	# map_2/map_4 contain the sampled tight turns that previously emitted a
+	# bow-tie triangle. Keep them in the regression suite as well as map_1.
+	for map_id in [2, 3, 4]:
+		var extra_data := TrackData.load_json("res://game/race/tracks/data/map_%d.json" % map_id)
+		var extra_builder := TrackBuilder.new()
+		add_child(extra_builder)
+		extra_builder.build(extra_data)
+		var extra_road := extra_builder.get_child(1) as StaticBody3D
+		var extra_mesh := (extra_road.get_child(1) as MeshInstance3D).mesh
+		var extra_arrays := extra_mesh.surface_get_arrays(0)
+		var extra_vertices: PackedVector3Array = extra_arrays[Mesh.ARRAY_VERTEX]
+		var extra_normals: PackedVector3Array = extra_arrays[Mesh.ARRAY_NORMAL]
+		var extra_bad := 0
+		var extra_sign := 0.0
+		for i in range(0, extra_vertices.size(), 3):
+			var extra_area := (extra_vertices[i + 1] - extra_vertices[i]).cross(\
+					extra_vertices[i + 2] - extra_vertices[i]).dot(extra_normals[i])
+			if absf(extra_area) < 0.0001:
+				extra_bad += 1
+			elif extra_sign == 0.0:
+				extra_sign = signf(extra_area)
+			elif signf(extra_area) != extra_sign:
+				extra_bad += 1
+		ok(extra_bad == 0, "map_%d 主路急弯无翻面三角形(%d 面,异常 %d)" % \
+				[map_id, extra_vertices.size() / 3, extra_bad])
+		extra_builder.queue_free()
 	ok(builder.get_node_or_null("FinishGate") != null, "FinishGate 生成")
 	ok(get_tree().get_nodes_in_group("Road").size() >= 2, "Road 组 %d 个(路面+护栏)" % get_tree().get_nodes_in_group("Road").size())
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())

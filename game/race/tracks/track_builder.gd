@@ -27,6 +27,10 @@ const LINE_COLOR := Color(0.88, 0.88, 0.88)
 # 辅路不再整体下压也不下沉,主路覆盖区内的辅路几何直接裁剪(见 _build_strip)
 const GRASS_DROP := 0.2
 const MARKING_LIFT := 0.04
+# GB 5768 lane-divider convention: 6 m painted segment + 9 m gap.
+const CENTER_DASH_LENGTH := 6.0
+const CENTER_DASH_GAP := 9.0
+const CENTER_DASH_PERIOD := CENTER_DASH_LENGTH + CENTER_DASH_GAP
 
 # --- 主辅路衔接参数 ---
 const JUNCTION_ATTACH_DIST := 8.0   # 端头超出主路路缘此距离视为独立路段,不做衔接
@@ -182,10 +186,13 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 				for qd in quad:
 					qd["oc"] = _overlap(qd["p"])  # 细分点重算真实覆盖值,不用插值
 			var poly := _clip_to_road(quad) if blended else quad
-			for k in range(2, poly.size()):
-				_add_strip_vert(st, poly[0])
-				_add_strip_vert(st, poly[k])
-				_add_strip_vert(st, poly[k - 1])
+			if not blended and poly.size() == 4:
+				_emit_strip_quad(st, poly)
+			else:
+				for k in range(2, poly.size()):
+					_add_strip_vert(st, poly[0])
+					_add_strip_vert(st, poly[k])
+					_add_strip_vert(st, poly[k - 1])
 	return _body_with_mesh(st.commit(), group)
 
 ## Tight curves can have a radius smaller than half the road width. A full-width
@@ -236,6 +243,60 @@ func _add_strip_vert(st: SurfaceTool, d: Dictionary) -> void:
 	st.set_normal(d["nrm"])
 	st.set_uv(d["uv"])
 	st.add_vertex(d["p"])
+
+## A sharp sampled turn can make the default diagonal of a ribbon quad
+## self-intersect. Try the other diagonal first; if neither triangulation is
+## valid, keep only the larger valid triangle instead of emitting a giant wedge.
+func _emit_strip_quad(st: SurfaceTool, quad: Array) -> void:
+	var p0: Vector3 = quad[0]["p"]
+	var p1: Vector3 = quad[1]["p"]
+	var p2: Vector3 = quad[2]["p"]
+	var p3: Vector3 = quad[3]["p"]
+	var nrm: Vector3 = (quad[0]["nrm"] + quad[1]["nrm"] + quad[2]["nrm"] + quad[3]["nrm"]).normalized()
+	var s0: float = (p2 - p0).cross(p1 - p0).dot(nrm)
+	var s1: float = (p3 - p0).cross(p2 - p0).dot(nrm)
+	var a0: float = (p3 - p0).cross(p1 - p0).dot(nrm)
+	var a1: float = (p3 - p1).cross(p2 - p1).dot(nrm)
+	if _same_winding(s0, s1):
+		if s0 < 0.0:
+			_emit_strip_tri(st, quad[0], quad[2], quad[1])
+			_emit_strip_tri(st, quad[0], quad[3], quad[2])
+		else:
+			_emit_strip_tri(st, quad[0], quad[1], quad[2])
+			_emit_strip_tri(st, quad[0], quad[2], quad[3])
+		return
+	if _same_winding(a0, a1):
+		if a0 < 0.0:
+			_emit_strip_tri(st, quad[0], quad[3], quad[1])
+			_emit_strip_tri(st, quad[1], quad[3], quad[2])
+		else:
+			_emit_strip_tri(st, quad[0], quad[1], quad[3])
+			_emit_strip_tri(st, quad[1], quad[2], quad[3])
+		return
+	# A bow-tie has no valid two-triangle tessellation. Keep the largest
+	# correctly wound half; the following sample closes the tiny resulting gap.
+	var best := -1
+	var best_area := 0.0001
+	for candidate in [s0, s1, a0, a1]:
+		if candidate < -best_area:
+			best_area = -candidate
+			best = 0 if candidate == s0 else (1 if candidate == s1 else (2 if candidate == a0 else 3))
+	if best == 0:
+		_emit_strip_tri(st, quad[0], quad[2], quad[1])
+	elif best == 1:
+		_emit_strip_tri(st, quad[0], quad[3], quad[2])
+	elif best == 2:
+		_emit_strip_tri(st, quad[0], quad[3], quad[1])
+	elif best == 3:
+		_emit_strip_tri(st, quad[1], quad[3], quad[2])
+
+func _same_winding(a: float, b: float) -> bool:
+	return absf(a) >= 0.0001 and absf(b) >= 0.0001 and signf(a) == signf(b)
+
+func _emit_strip_tri(st: SurfaceTool, a: Dictionary, b: Dictionary, c: Dictionary) -> void:
+	_add_strip_vert(st, a)
+	_add_strip_vert(st, b)
+	_add_strip_vert(st, c)
 
 ## 顶点相对主路覆盖区的裁剪值:负 = 保留(覆盖区外,或高出路面的立体交叉桥),
 ## 正 = 处于主路路面覆盖之下,应裁剪
@@ -818,9 +879,9 @@ func _build_markings() -> MeshInstance3D:
 
 	# 中心虚线:12m 周期画 6m,宽 0.3
 	var s := 0.0
-	while s < data.length - 6.0:
-		_mark_quad(st, s + 0.0, s + 6.0, 0.15, 0, lift)
-		s += 12.0
+	while s < data.length - CENTER_DASH_LENGTH:
+		_mark_quad(st, s, s + CENTER_DASH_LENGTH, 0.15, 0, lift)
+		s += CENTER_DASH_PERIOD
 	# 边线:连续,宽 0.25,距路缘 0.4;岔口处断开(给辅路留出开口)
 	s = 0.0
 	while s < data.length - 6.0:

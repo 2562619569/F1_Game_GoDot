@@ -1,6 +1,6 @@
-[gd_resource type="Theme" format=3]
+[gd_resource type="Theme" format=3 uid="uid://buyi7k3ky5lni"]
 
-[ext_resource type="FontFile" path="res://game/ui/theme/fonts/HarmonyOS_Sans_SC_Regular.ttf" id="1_hya4x"]
+[ext_resource type="FontFile" uid="uid://bchsljhmdll5c" path="res://game/ui/theme/fonts/HarmonyOS_Sans_SC_Regular.ttf" id="1_hya4x"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1l6su"]
 bg_color = Color(0.08411765, 0.11470588, 0.16313726, 1)

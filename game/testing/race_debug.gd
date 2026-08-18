@@ -21,4 +21,7 @@ static func finish_all(race: RaceManager) -> void:
 	for i in order.size():
 		if not order[i].finished:
 			order[i].mark_finished(race.race_time + 0.1 * i)
+	if race.player_racer != null:
+		var player_rank := order.find(race.player_racer) + 1
+		race.player_finished.emit(player_rank, race.race_time)
 	race._end_round()
