@@ -77,9 +77,9 @@ game/
 ## 测试
 
 ```bash
-# 全循环冒烟测试（大厅→房间→play→4回合→改装生效→冠军→回大厅，29 断言）
-"E:/godot/godot-4.7.1/Godot_v4.7.1-stable_win64.exe" --headless --path . \
-    res://game/testing/smoke_test.tscn
+# 全循环冒烟测试（大厅→房间→play→4回合→改装生效→冠军→回大厅，48 断言）
+# 引擎路径与分级测试流程统一见根目录 AGENTS.md
+"C:/Tools/Godot/Godot.exe" --headless --path . res://game/testing/smoke_test.tscn
 
 # 引擎声 VNS 移植自检（分层交叉淡化/滞回/事件音效，-s 模式不依赖 autoload）
 "C:/Tools/Godot/Godot.exe" --headless -s game/testing/engine_audio_check.gd
