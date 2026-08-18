@@ -147,6 +147,10 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	if track_data != null:
 		root.rotation.y = track_data.grid_heading(grid_no)  # 车头朝起点切线
 	CarBuilder.apply(v, Match.car_cfg(cid), stats, race.env_cfg, torque_scale)
+	# 物理分层（约定见 Racer 头注释）：车体在车辆层+检测层，撞世界也撞车；
+	# 倒转/跌落复位幽灵时由 Racer.apply_ghost 切到仅检测层
+	v.collision_layer = Racer.CAR_LAYER
+	v.collision_mask = Racer.CAR_MASK
 	CarMeshBuilder.attach_visual(v, cid, appearance)  # 美术装配，缺资源自动回退占位视觉
 	# 出生即静态贴地（原为写死 0.95，各车壳挂点高度不同，倒计时冻结期间悬空坠落）。
 	# 挂点 y 须在美术装配后读取：占位回退路径不写挂点，保留场景默认值。

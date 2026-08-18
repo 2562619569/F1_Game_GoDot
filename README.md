@@ -32,7 +32,8 @@ This controller features many systems that assist with making a competent vehicl
 - Clutch: C
 - Toggle Gearbox (Auto/Manual): T
 - Shift Up: F or +
-- Shift Down: R or -
+- Shift Down: -
+- Rewind (to last checkpoint, below 20 m/s): R
 - Debug Info: ~
 - Switch Debug Screens: < or >
 

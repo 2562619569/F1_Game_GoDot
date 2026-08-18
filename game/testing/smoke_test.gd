@@ -98,6 +98,49 @@ func _run() -> void:
 	await until(func(): return Match.backpack.size() > backpack_before, 25.0)
 	ok(Match.backpack.size() > backpack_before, "loot picked up into backpack (now %d parts)" % Match.backpack.size())
 
+	# ---- 6.5 R 倒转：检查点记账 → 低速传送 + 幽灵 → 超速拒绝（幽灵中做闸门，
+	#      玩家已传送至路面中心，不受自动驾驶卡死位置/AI 干扰）→ 到期恢复 ----
+	# 冻结 AI 车流：速度闸门断言依赖玩家车速稳定，AI 追尾会造成偶发干扰
+	for r in main.race.racers:
+		if not r.is_player:
+			r.vehicle.freeze = true
+	var pr: Racer = main.race.player_racer
+	var td: TrackData = main.race.track_data
+	pr.progress = td.checkpoints[2] + 1.0
+	pr.update_checkpoints(td)
+	ok(pr.cp_reached == 2, "checkpoint pass recorded while racing (cp=2)")
+	pv.linear_velocity = Vector3.ZERO
+	pv.angular_velocity = Vector3.ZERO
+	await until(func(): return pv.speed < 20.0, 5.0)
+	ok(pv.speed < 20.0, "below speed limit before rewind (%.1f m/s)" % pv.speed)
+	var pose := td.checkpoint_pose(pr.cp_reached)
+	main.race.rewind_player()
+	ok(pv.global_position.distance_to(pose["pos"]) < 3.0, "rewind teleported to last checkpoint")
+	ok(pr.ghost_left > 0.0 and pv.collision_layer == Racer.LAYER_CAR_DETECT
+			and pv.collision_mask == Racer.LAYER_WORLD, "ghost mode on (translucent, no car collision)")
+	# 幽灵保护下沿切线加速到 30 m/s：路面中心 + AI 已冻结且无车-车碰撞，读数稳定
+	pv.linear_velocity = pv.global_transform.basis * Vector3(0, 0, -30.0)
+	for i in 3:
+		await get_tree().physics_frame
+	ok(pv.speed > 20.0, "rewind gate: car above speed limit (%.1f m/s)" % pv.speed)
+	var pos_fast := pv.global_position
+	main.race.rewind_player()
+	ok(pv.global_position.distance_to(pos_fast) < 0.5 and pr.ghost_left > 0.0,
+			"rewind rejected above speed limit (ghost state untouched)")
+	pv.linear_velocity = Vector3.ZERO
+	pv.angular_velocity = Vector3.ZERO
+	await until(func(): return pv.speed < 20.0, 5.0)
+	var pose2 := td.checkpoint_pose(pr.cp_reached)
+	main.race.rewind_player()
+	ok(pv.global_position.distance_to(pose2["pos"]) < 3.0, "rewind again after slowing down")
+	# 倒转点可能与冻结的 AI 重叠，到期推迟机制会等分离——冻结车不会动，主动挪开
+	for r in main.race.racers:
+		if not r.is_player and r.vehicle.global_position.distance_to(pv.global_position) < 8.0:
+			r.vehicle.global_position += Vector3(20.0, 0.0, 0.0)
+	await until(func(): return pr.ghost_left <= 0.0, 12.0)
+	ok(pv.collision_layer == Racer.CAR_LAYER and pv.collision_mask == Racer.CAR_MASK,
+			"ghost expired after %.0fs, car collision restored" % Match.game_cfg("rewind_ghost_sec"))
+
 	# ---- 7. 完赛 → 局间整备 ----
 	RaceDebug.finish_all(main.race)
 	await until(func(): return main.current_ui != null and main.current_ui.name == "Intermission", 10.0)

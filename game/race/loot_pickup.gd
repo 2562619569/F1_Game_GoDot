@@ -30,6 +30,8 @@ func setup(pid: int, r: String) -> void:
 
 func _ready() -> void:
 	($Shape.shape as SphereShape3D).radius = Match.game_cfg("loot_pick_radius")
+	# 只认车辆检测层（车体物理层换到该层后 Area 仍可见，幽灵复位中拾取不失效）
+	collision_mask = Racer.LAYER_CAR_DETECT
 	body_entered.connect(_on_body)
 	monitoring = true
 

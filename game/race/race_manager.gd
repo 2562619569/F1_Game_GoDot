@@ -40,6 +40,9 @@ func setup(idx: int) -> void:
 	racers = out.racers
 	player_racer = out.player_racer
 	player_torque_applied = out.player_torque
+	if track_data != null:
+		# R 倒转检查点：地图加载后按配表间隔沿主路生成
+		track_data.build_checkpoints(Match.game_cfg("checkpoint_interval"))
 
 	# --- 倒计时（车辆冻结） ---
 	countdown_left = Match.game_cfg("start_countdown")
@@ -71,18 +74,33 @@ func _physics_process(delta: float) -> void:
 
 	race_time += delta
 	var limit := float(Match.round_cfg().time_limit)
+	var rewind_ghost_sec := float(Match.game_cfg("rewind_ghost_sec"))
 	for r in racers:
 		if track_data != null:
 			# 曲线赛道:弧长进度(索引作下次搜索 hint)
 			var pr: Array = track_data.progress_at(r.vehicle.global_position, r.hint)
 			r.progress = pr[0]
 			r.hint = int(pr[1])
+			r.update_checkpoints(track_data)
 		else:
 			r.progress = -r.vehicle.global_position.z
-		# 跌落保护：掉出赛道拉回主路
+		# 跌落保护：掉出赛道拉回主路并给幽灵（复位点可能有车流经过）
 		if r.vehicle.global_position.y < -15.0:
 			var rp: Vector3 = track_data.reset_point(r.vehicle.global_position) if track_data != null else Vector3(0, 1.2, r.vehicle.global_position.z)
 			r.recover_to(rp)
+			r.ghost_left = maxf(r.ghost_left, rewind_ghost_sec)
+			r.apply_ghost(true)
+		# 幽灵计时：半透明 + 无车-车碰撞；到期时若与其他车仍重叠（幽灵期间
+		# 对方可穿行甚至停进幽灵车位），推迟恢复实体，避免穿透求解把双方弹飞
+		if r.ghost_left > 0.0:
+			r.ghost_left -= delta
+			if r.ghost_left <= 0.0:
+				if _ghost_blocked(r):
+					r.ghost_left = 0.1  # 仍在重叠：续幽灵，分离后下一轮到期再恢复
+				else:
+					r.apply_ghost(false)
+			else:
+				r.apply_ghost(true)
 
 	_standings_acc += delta
 	if _standings_acc >= 0.5:
@@ -105,6 +123,35 @@ func _on_finish_body(body: Node3D) -> void:
 			return
 
 # ---------------- 排名 / 结算 ----------------
+
+## R 倒转复位：限速闸门（Game 表 rewind_speed_limit，m/s）+ 未冲线 +
+## 有检查点数据才放行；复位到已通过的最后一个检查点并进入幽灵
+## （半透明 + 无车-车碰撞 rewind_ghost_sec 秒，穿车流复位不被撞飞）。
+func rewind_player() -> void:
+	if player_racer == null or track_data == null or track_data.checkpoints.is_empty():
+		return
+	if not racing or player_racer.finished:
+		return
+	if player_racer.vehicle.speed >= Match.game_cfg("rewind_speed_limit"):
+		toast.emit("REWIND: slow down first (< %d m/s)" % int(Match.game_cfg("rewind_speed_limit")))
+		return
+	var cp := player_racer.cp_reached
+	player_racer.rewind_to(track_data.checkpoint_pose(cp))
+	player_racer.ghost_left = maxf(player_racer.ghost_left, float(Match.game_cfg("rewind_ghost_sec")))
+	player_racer.apply_ghost(true)
+	toast.emit("REWIND -> CP%d" % cp)
+
+## 幽灵退出前的重叠探测：以略小于车壳的盒在车位查询其他车体。
+## 幽灵车自身无碰撞、随时可驶离，重叠方驶开或幽灵车移开都会解除，不会死锁
+func _ghost_blocked(r: Racer) -> bool:
+	var q := PhysicsShapeQueryParameters3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.6, 1.2, 3.8)
+	q.shape = box
+	q.transform = r.vehicle.global_transform
+	q.collision_mask = Racer.LAYER_CAR
+	q.exclude = [r.vehicle.get_rid()]
+	return get_world_3d().direct_space_state.intersect_shape(q, 4).size() > 0
 
 func compute_order() -> Array:
 	var arr := racers.duplicate()

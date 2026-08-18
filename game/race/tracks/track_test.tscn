@@ -207,6 +207,7 @@ material_override = SubResource("Mat_post")
 
 [node name="FinishGate" type="Area3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -500)
+collision_mask = 4
 
 [node name="Shape" type="CollisionShape3D" parent="FinishGate"]
 shape = SubResource("Box_gate")

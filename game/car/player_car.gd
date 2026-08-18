@@ -87,6 +87,9 @@ func _physics_process(delta: float) -> void:
 			fire(0)
 		if Input.is_action_just_pressed("Tactical2"):
 			fire(1)
+		# R 倒转：失控/极端情况回到上一个检查点（限速/幽灵细则见 RaceManager.rewind_player）
+		if Input.is_action_just_pressed("Rewind") and race != null:
+			race.rewind_player()
 
 	# ---- 技能状态机 ----
 	for s in tactical:
