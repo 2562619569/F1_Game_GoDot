@@ -142,8 +142,7 @@ static func _json_value(v):
 
 # ---------------- 环境装配（运行时与编辑器插件共用） ----------------
 
-## 由完整配置生成比赛用 Environment：程序化天空 + 天空环境光 + ACES +
-## SSAO + 空气透视 + 雾(+辉光)
+## 由完整配置生成比赛用 Environment：程序化天空 + 天空环境光 + ACES + 雾(+辉光)
 static func make_env_cfg(c: Dictionary) -> Environment:
 	var env := Environment.new()
 	var sky_mat := ProceduralSkyMaterial.new()
@@ -153,16 +152,11 @@ static func make_env_cfg(c: Dictionary) -> Environment:
 	sky_mat.ground_bottom_color = c.sky_ground
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
-	sky.radiance_size = Sky.RADIANCE_SIZE_512  # 辐照图 256→512：车漆清漆的天空映像更细腻
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = c.ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	# SSAO：车底/护栏脚接地阴影，比赛向展厅观感对齐；半径/强度用引擎默认 1.0/2.0
-	env.ssao_enabled = true
-	# 空气透视：远处赛道向天色散射过渡出纵深（0 关 1 全开），与雾密度叠加不冲突
-	env.fog_aerial_perspective = 0.75
 	env.glow_enabled = bool(c.glow)
 	env.glow_intensity = c.glow_intensity
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE   # 加色混合：刹车灯/灯罩泛光远看醒目
@@ -179,10 +173,7 @@ static func setup_light_cfg(light: DirectionalLight3D, c: Dictionary) -> void:
 	light.light_energy = c.energy
 	light.rotation_degrees = Vector3(c.pitch, c.yaw, 0.0)
 	light.shadow_enabled = true
-	# 四分裂（引擎默认即此档，原先显式降到双分裂）：近景车身阴影分辨率更高；
-	# 分割带混合消除相邻分段的亮度接缝
-	light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	light.directional_shadow_blend_splits = true
+	light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	light.directional_shadow_max_distance = 160.0
 
 # ---------------- 兼容旧接口（直连预设） ----------------

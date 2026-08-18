@@ -75,17 +75,6 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 		if impact > 6.0:
 			cam.trigger_shake(clampf((impact - 6.0) / 40.0, 0.03, 0.3), 0.25))
 
-	# 车漆反射：跟随玩家车的实时盒反射探针。车漆 metallic 1.0 + 清漆靠环境反射
-	# 出质感（three.js 官方示例同款配方即依赖 HDR 环境反射），程序天空辐照缺
-	# 地面/护栏映像；36m 大盒同时罩住近旁 AI 车（远处车身小、天空反射已够看），
-	# 整场仅此一个探针，多一份场景渲染，随回合世界一并释放不跨场残留
-	var probe := ReflectionProbe.new()
-	probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
-	probe.box_projection = true
-	probe.size = Vector3(36.0, 16.0, 36.0)
-	probe.max_distance = 80.0
-	pv.add_child(probe)
-
 	return {"track": track, "track_data": track_data, "racers": racers,
 		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque,
 		"camera": cam, "env_node": we}
