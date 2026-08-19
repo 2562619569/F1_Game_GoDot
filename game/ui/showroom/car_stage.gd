@@ -79,11 +79,12 @@ func _end_drag() -> void:
 
 # ---------------- 展车装配 ----------------
 
-## Car 表全部 id 升序（601~603，配表扩车自动生效）
+## 玩家可选底盘 id 升序（601~603，配表扩车自动生效；NPC 交通车段 ≥700 不进展台）
 func car_ids() -> Array[int]:
 	var ids: Array[int] = []
 	for cid in Settings.car.data.keys():
-		ids.append(int(cid))
+		if int(cid) < Match.NPC_ID_BASE:
+			ids.append(int(cid))
 	ids.sort()
 	return ids
 

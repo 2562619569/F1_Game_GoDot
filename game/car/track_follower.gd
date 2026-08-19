@@ -12,11 +12,13 @@ const LOOK_MAX := 35.0
 
 var data: TrackData = null
 var lane := 0.0              # 相对中心线横向偏移(目标车道)
+var speed_scale := 1.0       # 目标速度缩放(1=全力;NPC 交通车 <1 慢速巡航)
 var _idx := 0                # 最近样条索引缓存
 
-func _init(d: TrackData = null, lane_off := 0.0) -> void:
+func _init(d: TrackData = null, lane_off := 0.0, spd_scale := 1.0) -> void:
 	data = d
 	lane = lane_off
+	speed_scale = spd_scale
 
 ## 每物理帧把控制量写入车辆
 func drive(v: Vehicle) -> void:
@@ -50,8 +52,8 @@ func drive(v: Vehicle) -> void:
 	var side_vel: float = v.linear_velocity.dot(side)
 	v.steering_input = clampf(ang * TURN_GAIN - side_vel * SLIDE_DAMP, -1.0, 1.0)
 
-	# 曲率限速:前方窗口最小半径 → 目标速度闭环
-	var vmax := data.corner_speed(s_here + 5.0, look + 15.0)
+	# 曲率限速:前方窗口最小半径 → 目标速度闭环(再乘 speed_scale 得本车目标巡航速度)
+	var vmax: float = data.corner_speed(s_here + 5.0, look + 15.0) * speed_scale
 	if speed > vmax + 2.0:
 		v.throttle_input = 0.0
 		v.brake_input = clampf((speed - vmax) * 0.15, 0.0, 1.0)

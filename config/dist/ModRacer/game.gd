@@ -31,6 +31,10 @@ var data = \
 18:{ "id":18,  "key":'bump_destab_speed',  "value":6.0,  "note":'Closing speed to trigger destabilization window (m/s)', },
 19:{ "id":19,  "key":'bump_destab_time',  "value":1.0,  "note":'Max destabilization window duration (s, scales with closing speed)', },
 20:{ "id":20,  "key":'bump_destab_grip',  "value":0.4,  "note":'Tire friction scale during destabilization window', },
+21:{ "id":21,  "key":'npc_count',  "value":4.0,  "note":'NPC traffic cars spawned per round', },
+22:{ "id":22,  "key":'npc_hp',  "value":100.0,  "note":'NPC traffic car hit points', },
+23:{ "id":23,  "key":'npc_speed_scale',  "value":0.45,  "note":'NPC cruise speed scale vs AI pace', },
+24:{ "id":24,  "key":'npc_damage_coeff',  "value":1.5,  "note":'NPC collision damage per m/s closing speed above bump_min_speed', },
 
 }
 

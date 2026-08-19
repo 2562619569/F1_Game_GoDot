@@ -18,6 +18,10 @@ const AI_DEFS := [
 	{"name": "RIVAL-3", "car_id": 603, "skill": 0.87},
 ]
 
+## Car 表 id 段边界：≥ 此值为 NPC 交通车专用段（race_builder.NPC_CAR_IDS），
+## 不进玩家选车/展台（car_stage.car_ids 过滤）
+const NPC_ID_BASE := 700
+
 ## 性能槽类别（受 perf_slots 限制）与功能槽类别（受 func_slots 限制）
 const PERF_CATEGORIES := ["engine", "tires", "aero", "chassis"]
 const FUNC_CATEGORIES := ["tactical"]

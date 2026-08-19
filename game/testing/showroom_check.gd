@@ -78,7 +78,8 @@ func _check_initial() -> void:
 	_note(live.size() == 1 and live[0] is Vehicle and not live[0].is_physics_processing(), "展台上有且仅有一辆展车（物理已停用）")
 	_note(showroom.stage.get_node_or_null("Backdrop/Wall") != null, "工业车库背景墙已生成")
 	var bar: HBoxContainer = showroom.get_node("UI/Root/BottomBar")
-	_note(bar.get_children().size() == Settings.car.data.size(), "底部按钮数 = Car 表车辆数")
+	_note(bar.get_children().size() == showroom.car_ids().size(),
+			"底部按钮数 = 玩家可选车辆数（NPC 段 ≥%d 不进展台）" % Match.NPC_ID_BASE)
 	_note(_pressed_id() == 601, "当前 601 对应按钮为按下态")
 	_note(showroom.get_node("UI/Root/CarName").text.contains("Brute Power"), "车名标签显示 Brute Power")
 

@@ -11,6 +11,11 @@ extends Node3D
 ## 双方组件各发一次、方向相反，总动量守恒。轻蹭（< min_speed）与冷却期内不放大。
 ## 参数由 race_builder 从 Game 表 bump_* 注入；缺省值与表内默认一致，自检可直接注入。
 ##
+## 碰撞伤害（npc_damage_coeff）：车-车碰撞除冲量外还按接近速度折算伤害，只结算到
+## 对方车挂的 CarHealth 子节点（NPC 交通车才有；玩家/AI 赛车不挂 → 免疫）。每次
+## 碰撞各车组件只给「对方」记一次伤害：玩家撞 NPC 由玩家侧组件扣 NPC 血，NPC 互撞
+## 双方组件各扣对方一次，不重不漏。伤害与冲量共用同一死区/冷却/限速，重撞重扣。
+##
 ## 失稳窗口（destab_*）：冲量本身只给得起 ~0.1s 的旋转——高抓地胎（μ≈3）+ 0.9
 ## 自动反打 + 横摆稳定会把甩尾角速度瞬间吃掉（实测 8 m/s 角撞 0.6s 仅偏转 1.8°），
 ## 加大冲量只是线性放大晃动幅度，转不成失控。因此重击（≥ destab_speed）时给
@@ -32,6 +37,7 @@ const DESTAB_STAB_SCALE := 0.3    # 窗口内横摆稳定强度缩放
 const DEFAULT_DESTAB_SPEED := 6.0
 const DEFAULT_DESTAB_TIME := 1.0
 const DEFAULT_DESTAB_GRIP := 0.40
+const DEFAULT_DAMAGE_COEFF := 1.5  # 每米/秒接近速度（超死区部分）折算的伤害
 
 var strength := DEFAULT_STRENGTH  # 冲量倍率（×接近速度×折合质量）
 var min_speed := DEFAULT_MIN_SPEED  # 接近速度死区（m/s），低于只走原始求解
@@ -40,6 +46,7 @@ var yaw := DEFAULT_YAW            # 甩尾力矩倍率
 var destab_speed := DEFAULT_DESTAB_SPEED  # 触发失稳窗口的接近速度（m/s）
 var destab_time := DEFAULT_DESTAB_TIME    # 失稳窗口时长上限（s）
 var destab_grip := DEFAULT_DESTAB_GRIP    # 窗口内轮胎摩擦缩放
+var damage_coeff := DEFAULT_DAMAGE_COEFF  # 碰撞伤害系数（对有 CarHealth 的对方车）
 
 var _v: Vehicle
 var _half := Vector3.ZERO    # 碰撞盒半尺寸（本车局部）
@@ -49,6 +56,7 @@ var _cooldown := 0.0
 var _pre_vel := Vector3.ZERO  # 本车上一物理步（碰前）速度：body_entered 触发时
 							  # 读到的已是本步解算后的速度，直接用会低估撞击
 var hits := 0                 # 已放大次数（自检观测用）
+var damage_dealt := 0.0       # 已结算给对方车的伤害（自检观测用）
 var _destab_left := 0.0       # 失稳窗口剩余时间（s，自检观测用）
 var _destab_saved := false    # 窗口开启时是否已备份原稳定性参数
 var _saved_countersteer := 0.0
@@ -64,6 +72,7 @@ func setup(v: Vehicle, cfg := {}) -> void:
 	destab_speed = float(cfg.get("destab_speed", DEFAULT_DESTAB_SPEED))
 	destab_time = float(cfg.get("destab_time", DEFAULT_DESTAB_TIME))
 	destab_grip = float(cfg.get("destab_grip", DEFAULT_DESTAB_GRIP))
+	damage_coeff = float(cfg.get("damage_coeff", DEFAULT_DAMAGE_COEFF))
 	# body_entered 依赖接触上报（玩家的相机震屏接线另在 race_builder 单独连）
 	v.contact_monitor = true
 	v.max_contacts_reported = 4
@@ -125,6 +134,14 @@ func _on_body_entered(body: Node) -> void:
 	hits += 1
 	if closing >= destab_speed:
 		_apply_destab(closing, n, other_pre)
+	# 碰撞伤害：只结算到对方车的 CarHealth（挂载约定见 npc_car.gd）；
+	# closing 已过 min_speed 死区，伤害 = 系数 × 超死区接近速度（沿用 max_speed 封顶）
+	var health := other.get_node_or_null("CarHealth")
+	if health is CarHealth and damage_coeff > 0.0:
+		var dmg := damage_coeff * maxf(0.0, vc - min_speed)
+		if dmg > 0.0:
+			damage_dealt += dmg
+			(health as CarHealth).take_damage(dmg)
 
 ## 失稳窗口开启/续期：时长在 [DESTAB_MIN_TIME, destab_time] 间随超出阈值的接近
 ## 速度线性拉长；谁朝对方逼近得快谁是撞人方，挨打方拿全窗口、撞人方按份额打折。

@@ -11,10 +11,16 @@ const CAMERA_SCRIPT := preload("res://game/race/smooth_chase_camera.gd")
 const ENGINE_SOUND := preload("res://addons/gevp/scenes/engine_sound.tscn")
 const PLAYER_SCRIPT := preload("res://game/car/player_car.gd")
 const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
+const NPC_SCRIPT := preload("res://game/car/npc_car.gd")
 const COLLISION_KICK := preload("res://game/car/collision_kick.gd")
 
 const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
+const NPC_COLOR := Color(0.62, 0.62, 0.66)  # 交通车灰，与竞速车队伍色区分
+
+## NPC 交通靶车底盘池（Car 表 701~ 段：参数与玩家车同源、美术 id 独立，
+## art/cars 无对应目录时 CarMeshBuilder 自动回退占位视觉，后续按 adapt-car 接入）
+const NPC_CAR_IDS := [701, 702, 703]
 
 ## 出生离地净空：车身抬到静态贴地位之上该高度，靠悬挂自由沉降落地。
 ## 与"出生即静态贴地"的差别：地图重烘焙后发车位与路面可能互嵌毫米级，
@@ -46,6 +52,9 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	# --- 参赛车（含倒序发车位） ---
 	var racers: Array[Racer] = []
 	var player_racer := _spawn_racers(race, track, track_data, racers)
+
+	# --- NPC 交通靶车（不占发车位、不参与排名，可被撞爆掉配件） ---
+	_spawn_npcs(race, track, track_data, loot_cb)
 
 	# --- 相机跟随玩家（Pro Vehicle Camera：弹性牵引+速度FOV+过弯侧倾+look_back，
 	#     smooth_chase_camera 包一层旋转低通，并加视角模式循环/鼠标·手柄环视/持续震动源；
@@ -204,6 +213,74 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	r.vehicle = v
 	r.ctrl = ctrl
 	return r
+
+## NPC 交通靶车生成（Game 表 npc_count/npc_hp/npc_speed_scale 可调）：
+## 沿主路中后段均匀铺开，避开头部发车区；数量为 0 时整段跳过（配表可一键关闭）
+static func _spawn_npcs(race: RaceManager, track: Node3D, track_data: TrackData, loot_cb: Callable) -> void:
+	var count := int(Match.game_cfg("npc_count"))
+	if count <= 0:
+		return
+	var hp := Match.game_cfg("npc_hp")
+	var speed_scale := Match.game_cfg("npc_speed_scale")
+	for i in count:
+		var cid: int = NPC_CAR_IDS[i % NPC_CAR_IDS.size()]
+		var spot := _npc_spot(track, track_data, i, count)
+		_make_npc(race, track_data, cid, spot, hp, speed_scale, loot_cb)
+
+## NPC 出生点：有赛道数据 = 主路弧长 [0.2L, 0.92L] 均匀取点 + 横向随机车道，
+## 车头朝路线切线；兜底直线图复用主路 loot 点（贴地、朝 -z）
+static func _npc_spot(track: Node3D, track_data: TrackData, i: int, count: int) -> Dictionary:
+	if track_data != null:
+		var t := (float(i) + 0.5) / float(count)
+		var s := lerpf(track_data.length * 0.2, track_data.length * 0.92, t)
+		var lane := randf_range(-0.3, 0.3) * track_data.width_at(s)
+		var pos: Vector3 = track_data.point_at(s) + track_data.normal_at(s) * lane
+		var tang: Vector3 = track_data.point_at(s + 2.0) - track_data.point_at(maxf(s - 2.0, 0.0))
+		return {"pos": pos, "yaw": atan2(-tang.x, -tang.z), "lane": lane}
+	var pts: Array = track.main_route_points(count)
+	var p: Vector3 = pts[i % pts.size()]
+	return {"pos": Vector3(p.x, 0.0, p.z), "yaw": 0.0, "lane": p.x}
+
+## NPC 单车装配：与 _make_racer 同款物理/视觉/冲击链路，差异：
+## - 挂 CarHealth（可被撞损，CollisionKick 按接近速度结算伤害）；
+## - Driver 换 npc_car.gd（慢速巡航 + 撞爆掉落），不建 Racer（不排名不解冻依赖）
+static func _make_npc(race: RaceManager, track_data: TrackData, cid: int, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
+	var root := Node3D.new()
+	root.name = "NPC-%d" % cid
+	var v: Vehicle = CAR_SCENE.instantiate()
+	root.position = spot.pos
+	root.rotation.y = spot.yaw
+	CarBuilder.apply(v, Match.car_cfg(cid), Match.stats_for_car(cid, {}), race.env_cfg, 1.0)
+	v.collision_layer = Racer.CAR_LAYER
+	v.collision_mask = Racer.CAR_MASK
+	CarMeshBuilder.attach_visual(v, cid, {})  # 70x 段暂无美术 → 占位视觉
+	var kick := COLLISION_KICK.new()
+	kick.name = "CollisionKick"
+	v.add_child(kick)
+	kick.setup(v, {
+		"strength": Match.game_cfg("bump_strength"),
+		"min_speed": Match.game_cfg("bump_min_speed"),
+		"max_speed": Match.game_cfg("bump_max_speed"),
+		"yaw": Match.game_cfg("bump_yaw"),
+		"destab_speed": Match.game_cfg("bump_destab_speed"),
+		"destab_time": Match.game_cfg("bump_destab_time"),
+		"destab_grip": Match.game_cfg("bump_destab_grip"),
+		"damage_coeff": Match.game_cfg("npc_damage_coeff"),
+	})
+	var health := CarHealth.new()
+	health.name = "CarHealth"
+	v.add_child(health)
+	health.setup(hp)
+	v.position = Vector3(0, _rest_height(v) + SPAWN_DROP, 0)
+	root.add_child(v)
+	race.add_child(root)
+	CarBuilder.add_team_banner(v, NPC_COLOR)
+	# 脚本须在入树前附加（同 _make_racer），否则 _physics_process 不启用
+	var ctrl := Node3D.new()
+	ctrl.name = "Driver"
+	ctrl.set_script(NPC_SCRIPT)
+	root.add_child(ctrl)
+	ctrl.setup(v, track_data, spot.lane, speed_scale, race, loot_cb)
 
 ## 玩家车引擎声：VNS 合成组件（多 RPM 分层交叉淡化 + 事件音效），
 ## 采样库缺失时回退 GEVP 自带单采样变调，保证不出无声车
