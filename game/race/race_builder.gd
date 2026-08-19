@@ -13,6 +13,7 @@ const PLAYER_SCRIPT := preload("res://game/car/player_car.gd")
 const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
 const NPC_SCRIPT := preload("res://game/car/npc_car.gd")
 const COLLISION_KICK := preload("res://game/car/collision_kick.gd")
+const DRIFT_MODE := preload("res://game/car/drift_mode.gd")
 
 const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
@@ -210,6 +211,19 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	if is_player:
 		v.add_to_group("player_car")
 		ctrl.setup(v, track_data, race)
+		# 空格 = NFS 式按住漂移（Game 表 drift_* 可调，仅玩家车挂载；
+		# 见 drift_mode.gd 头注释——与 CollisionKick 参数集零交集）
+		var drift := DRIFT_MODE.new()
+		drift.name = "DriftMode"
+		v.add_child(drift)
+		drift.setup(v, {
+			"speed_min": Match.game_cfg("drift_speed_min"),
+			"brake_scale": Match.game_cfg("drift_brake_scale"),
+			"rear_grip": Match.game_cfg("drift_rear_grip"),
+			"slip_assist": Match.game_cfg("drift_slip_assist"),
+			"yaw_engage": Match.game_cfg("drift_yaw_engage"),
+			"yaw_kick": Match.game_cfg("drift_yaw_kick"),
+		})
 		_attach_engine_audio(v)
 	else:
 		ctrl.setup(v, track_data, _grid_lane(track_data, grid_no))

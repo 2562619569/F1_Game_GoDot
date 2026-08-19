@@ -39,6 +39,12 @@ var data = \
 26:{ "id":26,  "key":'npc_count_min',  "value":2.0,  "note":'NPC traffic cars per round (min for random density)', },
 27:{ "id":27,  "key":'npc_w_rare',  "value":25.0,  "note":'NPC type spawn weight: rare (702, npc_rare loot)', },
 28:{ "id":28,  "key":'npc_w_elite',  "value":5.0,  "note":'NPC type spawn weight: elite (703, npc_elite loot)', },
+29:{ "id":29,  "key":'drift_speed_min',  "value":8.0,  "note":'Min speed to enter/hold drift mode (m/s)', },
+30:{ "id":30,  "key":'drift_brake_scale',  "value":0.35,  "note":'Handbrake force scale while drifting (bite, not full lock)', },
+31:{ "id":31,  "key":'drift_rear_grip',  "value":0.62,  "note":'Rear lateral grip scale while drifting (front untouched)', },
+32:{ "id":32,  "key":'drift_slip_assist',  "value":0.55,  "note":'Steering slip assist threshold while drifting (rad)', },
+33:{ "id":33,  "key":'drift_yaw_engage',  "value":0.22,  "note":'Yaw stability engage angle while drifting (dot domain, ~40deg max drift angle)', },
+34:{ "id":34,  "key":'drift_yaw_kick',  "value":0.25,  "note":'Drift-entry yaw kick angular velocity (rad/s, x steering input)', },
 
 }
 

@@ -32,6 +32,7 @@ GODOT="C:/Tools/Godot/Godot.exe"   # 4.7.1 stable，唯一可用引擎路径（E
 | vehicle.gd 自动换挡 | `-s game/testing/shift_logic_check.gd` 和 `-s game/testing/shift_rev_check.gd` | 秒级 |
 | 轮胎物理模型 | `-s game/testing/tire_model_check.gd` | 秒级 |
 | 车车碰撞 collision_kick | `-s game/testing/bump_check.gd` | 秒级 |
+| 空格漂移模式 drift_mode | `-s game/testing/drift_check.gd` | 秒级 |
 | 追逐相机 smooth_chase_camera | `-s game/testing/camera_check.gd` | ~16s |
 | 引擎声 engine_audio_vns | `-s game/testing/engine_audio_check.gd` | 秒级 |
 | 车辆美术装配/碰撞体重建 | `-s game/testing/collision_check.gd`、`-s game/testing/wheel_assembly_check.gd`；新车走 adapt-car skill | ~10s |

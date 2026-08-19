@@ -60,6 +60,10 @@ var mass_over_wheel := 0.0
 # 轮载为基准做绝对归一（而非各轮自身静载），前重配置的车前轴静态 μ 天然更低。
 var load_sensitivity := 0.20
 var static_load_reference := 0.0
+# 本地修改：侧向抓地总缩放（漂移模式用）。DriftMode 进入漂移时只压低后轴轮的
+# 该值——它是 per-wheel 独立变量，不随表面切换重读（区别于 current_* 一族缓存），
+# 也不碰全车共享的摩擦字典；默认 1.0 无任何影响。
+var lateral_grip_scale := 1.0
 
 var wheel_moment := 0.0
 var spin := 0.0
@@ -348,7 +352,10 @@ func process_tires(braking : bool, delta : float):
 		var brushx := (1.0 - friction * (1.0 - slip_vector.y) * (0.25 * deflect)) * deflect
 		force_vector.y = friction * current_longitudinal_grip_ratio * cornering_stiffness * slip_vector.y * brushx * braking_help * z_sign
 		force_vector.x = friction * cornering_stiffness * slip_vector.x * brushx * (absf(slip_vector.x * current_lateral_grip_assist) + 1.0)
-	
+
+	# 本地修改：侧向力总缩放（线性/饱和两分支统一，见变量声明处注释）
+	force_vector.x *= lateral_grip_scale
+
 	if absf(force_vector.y) > absf(max_y_force):
 		force_vector.y = max_y_force * signf(force_vector.y)
 		limit_spin = true
