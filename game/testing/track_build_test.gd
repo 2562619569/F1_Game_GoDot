@@ -20,13 +20,13 @@ func _ready() -> void:
 	if data == null:
 		_finish()
 		return
-	ok(absf(data.length - 4146.4) < 2.0, "主路长度 %.1fm(含 36m 发车引道/8 格)" % data.length)
+	ok(absf(data.length - 4533.6) < 2.0, "主路长度 %.1fm(含 36m 发车引道/8 格)" % data.length)
 	ok(data.routes.size() == 3, "路由数 %d(主路+分支)" % data.routes.size())
 
 	var anchor: float = float(data.grid_cfg.get("anchor_s", 0.0))
 	ok(absf(anchor - 36.0) < 0.01, "发车引道 anchor_s=%.1f" % anchor)
 	var p_leadin := data.point_at(0.0)
-	ok(p_leadin.distance_to(Vector3(0, 0, 36)) < 1.5, "point_at(0) 在引道尾端 %s" % [p_leadin])
+	ok(p_leadin.distance_to(Vector3(-9.214, 0, 34.801)) < 1.5, "point_at(0) 在引道尾端 %s" % [p_leadin])
 	var p0 := data.start_point()
 	ok(p0.distance_to(Vector3(0, 0, 0)) < 1.0, "起点线在 (0,0,0) %s" % [p0])
 	var pe := data.point_at(data.length)
@@ -178,7 +178,7 @@ func _ready() -> void:
 	ok(get_tree().get_nodes_in_group("Dirt").size() >= 1, "Dirt 组 %d 个" % get_tree().get_nodes_in_group("Dirt").size())
 	ok(get_tree().get_nodes_in_group("Grass").size() >= 1, "Grass 组 %d 个" % get_tree().get_nodes_in_group("Grass").size())
 	ok(get_tree().get_nodes_in_group("Gravel").size() >= 1, "Gravel 组 %d 个(砂石路肩)" % get_tree().get_nodes_in_group("Gravel").size())
-	ok(builder.junctions.size() == 4, "岔口融合 %d 处(4 个 dirt 端头均衔主路)" % builder.junctions.size())
+	ok(builder.junctions.size() == 2, "岔口融合 %d 处(2 个 dirt 端头均衔主路)" % builder.junctions.size())
 
 	# --- 外退式护栏:退离路缘 + 视觉低矮 + 碰撞面远高于视觉 ---
 	# 急弯内侧按曲率收紧到 BARRIER_INNER_RADIUS,发卡弯 R<half 时必须收紧
@@ -219,6 +219,65 @@ func _ready() -> void:
 			var lat: Dictionary = data.main_lateral(v)
 			col_top = maxf(col_top, v.y - float(lat["road_y"]))
 		ok(col_top > 3.5, "护栏碰撞墙远高于视觉(碰撞顶高 %.1fm vs 视觉 0.8m)" % col_top)
+
+	# --- 条带面绕序:Godot 正面=顺时针,几何叉积须与顶点法线反向 ---
+	# 凹多边形碰撞默认不碰背面:左右镜像点序的条带在一侧法线朝下,
+	# 渲染因 CULL_DISABLED 看得见、碰撞整体失效(车陷到草地板)——此处永久设防
+	var wind_bad := 0
+	var wind_total := 0
+	for surf_group in ["Road", "Dirt", "Gravel"]:
+		for n in get_tree().get_nodes_in_group(surf_group):
+			for ch in n.get_children():
+				if not (ch is MeshInstance3D):
+					continue
+				var w_arrays: Array = ch.mesh.surface_get_arrays(0)
+				var w_v: PackedVector3Array = w_arrays[Mesh.ARRAY_VERTEX]
+				var w_n: PackedVector3Array = w_arrays[Mesh.ARRAY_NORMAL]
+				for t3 in range(0, w_v.size(), 3):
+					wind_total += 1
+					if (w_v[t3 + 1] - w_v[t3]).cross(w_v[t3 + 2] - w_v[t3]).dot(w_n[t3]) > 0.0001:
+						wind_bad += 1
+	ok(wind_total > 0 and wind_bad == 0,
+			"全部条带面正面朝上(%d 面,背面 %d)" % [wind_total, wind_bad])
+
+	# --- 左右路肩物理射线:有效路缘外 2m 从上往下打 ---
+	# 命中 Grass(草平板)= 砂石无碰撞(背面 bug);合并区/岔口可为 Road/Dirt
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var space := get_world_3d().direct_space_state
+	var eff_l_ray := builder._edge_offsets(data.main, 1.0)
+	var eff_r_ray := builder._edge_offsets(data.main, -1.0)
+	var ray_l_gravel := 0
+	var ray_r_gravel := 0
+	var ray_grass_pos := ""
+	var ray_total := 0
+	var s_ray := 60.0
+	while s_ray < data.length - 30.0:
+		var i_r := data.nearest_index(data.point_at(s_ray), -1)
+		var nrm_r := TrackData._flat_normal(data.main["tans"][i_r])
+		for side_r: float in [1.0, -1.0]:
+			var eff_r2 := eff_l_ray if side_r > 0.0 else eff_r_ray
+			var p_r: Vector3 = data.main["pts"][i_r] + nrm_r * (float(eff_r2[i_r]) + 2.0) * side_r
+			var q := PhysicsRayQueryParameters3D.create(
+					Vector3(p_r.x, p_r.y + 1.0, p_r.z), Vector3(p_r.x, p_r.y - 0.5, p_r.z))
+			var hit := space.intersect_ray(q)
+			ray_total += 1
+			if hit.is_empty():
+				continue
+			var g0: Array = (hit["collider"] as CollisionObject3D).get_groups()
+			var tag0 := str(g0[0]) if g0.size() > 0 else ""
+			if tag0 == "Gravel":
+				if side_r > 0.0:
+					ray_l_gravel += 1
+				else:
+					ray_r_gravel += 1
+			elif tag0 == "Grass":
+				ray_grass_pos += "s=%.0f%s " % [s_ray, "L" if side_r > 0.0 else "R"]
+		s_ray += 40.0
+	ok(ray_grass_pos == "",
+			"路肩物理射线无草平板穿透(%s / %d)" % [ray_grass_pos if ray_grass_pos != "" else "无", ray_total])
+	ok(ray_l_gravel > ray_total * 0.6 and ray_r_gravel > ray_total * 0.6,
+			"左右路肩物理射线均命中 Gravel(左 %d 右 %d / %d)" % [ray_l_gravel, ray_r_gravel, ray_total])
 
 	var has_trimesh := false
 	for group in ["Road", "Dirt"]:

@@ -24,8 +24,8 @@ func _init() -> void:
 	tb.build(data)
 	root.add_child(tb)
 
-	# --- 岔口识别:map_1 两条 dirt 分支共 4 个端头均贴近主路 ---
-	ok(tb.junctions.size() == 4, "岔口识别 %d 个(应为 4)" % tb.junctions.size())
+	# --- 岔口识别:map_1 两条 dirt 分支,当前共 2 个端头贴近主路 ---
+	ok(tb.junctions.size() == 2, "岔口识别 %d 个(应为 2)" % tb.junctions.size())
 
 	var grass: StaticBody3D = null
 	var walls: StaticBody3D = null

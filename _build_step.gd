@@ -1,0 +1,22 @@
+extends SceneTree
+func _init() -> void:
+	var data: TrackData = TrackData.load_json("res://game/race/tracks/data/map_1.json")
+	var tb := TrackBuilder.new()
+	tb.data = data
+	print("[S] road grid")
+	tb._build_road_grid()
+	print("[S] strip")
+	var road := tb._build_strip(data.main, "Road", tb._mat(Color.BLACK))
+	print("[S] offsets")
+	var ol := tb._offsets(1.0, 8.0)
+	var orr := tb._offsets(-1.0, 8.0)
+	var gl := tb._offsets(1.0, 8.0, false)
+	print("[S] gravel")
+	var g := tb._build_gravel(8.0, gl, tb._offsets(-1.0, 8.0, false))
+	print("[S] walls")
+	var w := tb._build_walls(0.8, ol, orr)
+	print("[S] markings")
+	root.add_child(tb)
+	var m := tb._build_markings()
+	print("[S] done gravel=%s walls=%s" % [g != null, w != null])
+	quit()

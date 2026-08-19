@@ -925,8 +925,16 @@ func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32A
 			var poly := _clip_oc([kept[k][1], kept[k][2], kept[k + 1][2], kept[k + 1][1]])
 			if poly.size() < 3:
 				continue
+			# 绕序统一为 Godot 正面(顺时针,三角形叉积与法线反向):左右两侧传入点序
+			# 互为镜像,不修正则一侧法线朝上另一侧朝下——凹多边形碰撞默认不碰背面,
+			# 背面侧看得见(CULL_DISABLED)但整体无碰撞,车陷到草地板上
+			var p0v: Vector3 = poly[0]["p"]
+			var fan_cross := (poly[2]["p"] as Vector3 - p0v).cross(\
+					poly[1]["p"] as Vector3 - p0v).y
+			var ccw := fan_cross > 0.0
 			for t in range(2, poly.size()):
-				for corner in [poly[0], poly[t], poly[t - 1]]:
+				for corner in ([poly[0], poly[t - 1], poly[t]] if ccw \
+						else [poly[0], poly[t], poly[t - 1]]):
 					st.set_normal(Vector3.UP)
 					st.add_vertex(corner["p"])
 			quads += 1
@@ -982,7 +990,8 @@ func _build_walls(h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Arr
 			var wall_s := (float(s_arr[int(a[0])]) + float(s_arr[int(b[0])])) * 0.5
 			if _hits_far_road(wall_mid, wall_s):
 				continue
-			var nrm: Vector3 = a[2]
+			# 期望正面 = 朝向路面一侧(车从路面侧撞墙是正面;法线朝外则左墙无碰撞)
+			var nrm: Vector3 = -(a[2] as Vector3)
 			_strip_quad(vis, a[1], a[1] + Vector3(0, h, 0),
 					b[1] + Vector3(0, h, 0), b[1], nrm)
 			_strip_quad(col, a[1] - Vector3(0, BARRIER_COLLISION_SINK, 0),
@@ -1003,7 +1012,17 @@ func _build_walls(h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Arr
 	body.add_child(mi)
 	return body
 
+## 竖直/放坡条带 quad:绕序按期望法线自修正(左右两侧镜像点序会导致左墙从路面侧
+## 撞是背面——凹多边形碰撞默认不碰背面,左墙左坡将无碰撞)。
+## Godot 正面 = 顺时针:三角形叉积与期望法线反向(dot < 0)
 func _strip_quad(st: SurfaceTool, bl: Vector3, tl: Vector3, tr: Vector3, br: Vector3, nrm: Vector3) -> void:
+	if (tl - bl).cross(tr - bl).dot(nrm) > 0.0:
+		var tmp := bl
+		bl = br
+		br = tmp
+		var tmp2 := tl
+		tl = tr
+		tr = tmp2
 	for p in [bl, tl, tr, bl, tr, br]:
 		st.set_normal(nrm)
 		st.add_vertex(p)
