@@ -77,7 +77,6 @@ func _ready() -> void:
 
 	var road_edge_bad := 0
 	var barrier_curve_bad := 0
-	var barrier_curve_skips := 0
 	var main_pts: PackedVector3Array = data.main["pts"]
 	var main_widths: PackedFloat32Array = data.main["widths"]
 	var main_radii: PackedFloat32Array = data.main["radii"]
@@ -90,18 +89,16 @@ func _ready() -> void:
 			if absf(cross) < 1e-6 or sgn != inner:
 				continue
 			var edge_limit := maxf(0.0, float(main_radii[i]) - TrackBuilder.ROAD_INNER_RADIUS)
-			var barrier_limit := maxf(0.0, float(main_radii[i]) \
-					- float(main_widths[i]) * 0.5 - TrackBuilder.BARRIER_INNER_RADIUS)
+			# 护栏锚有效路缘:总退距(有效路缘+退距)≤ R-1.5(收拢区护栏贴实际路面边,
+			# 弯心不再强制断开;开缺由远端走廊判定,zfight 检查覆盖)
+			var barrier_total := float(offsets[i]) + float(edges[i])
+			var barrier_limit := float(main_radii[i]) - TrackBuilder.BARRIER_INNER_RADIUS
 			if edges[i] > edge_limit + 0.001:
 				road_edge_bad += 1
-			if offsets[i] > barrier_limit + 0.001:
+			if barrier_total > barrier_limit + 0.001:
 				barrier_curve_bad += 1
-			if barrier_limit < TrackBuilder.OFFSET_SKIP and offsets[i] < TrackBuilder.OFFSET_SKIP:
-				barrier_curve_skips += 1
 	ok(road_edge_bad == 0, "急弯路面内缘不越过弯心(越界 %d)" % road_edge_bad)
-	ok(barrier_curve_bad == 0 and barrier_curve_skips > 0,
-			"急弯护栏不越过弯心且极小弯心断开(越界 %d,断开采样 %d)" \
-			% [barrier_curve_bad, barrier_curve_skips])
+	ok(barrier_curve_bad == 0, "急弯护栏总退距不越过弯心(越界 %d)" % barrier_curve_bad)
 
 	# --- 退距场核心性质(Lipschitz 斜率 ≤1:弯内缘平滑收拢,领结在构造上不可能) ---
 	var saw := PackedFloat32Array([8.0, 8.0, 0.0, 8.0, 8.0])
@@ -192,13 +189,20 @@ func _ready() -> void:
 		var wmi: MeshInstance3D = walls.get_child(1)
 		var wverts: PackedVector3Array = wmi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 		# 退距下限 0.3:急弯/邻腿贴近处按远端路面走廊收紧(可低至 OFFSET_SKIP=0.4),
-		# 发卡弯汇合弯心整段不放;护栏与路面走廊的硬约束在"任何顶点不得在路面内"断言
+		# 发卡弯汇合弯心整段不放;护栏与路面走廊的硬约束在"任何顶点不得在路面内"断言。
+		# 退距按有效路缘分(急弯收拢区路面边 < 全宽半路面,护栏贴实际路面边)
+		var wall_eff_l: PackedFloat32Array = builder._edge_offsets(data.main, 1.0)
+		var wall_eff_r: PackedFloat32Array = builder._edge_offsets(data.main, -1.0)
 		var setback_bad := 0
 		var vis_bad := 0
 		var near_off := 0
 		for v in wverts:
 			var lat: Dictionary = data.main_lateral(v)
-			var sb: float = float(lat["dist"]) - float(lat["half"])
+			var ws := float(lat["s"])
+			var wn := data.normal_at(ws)
+			var wrel: Vector3 = v - (lat["foot"] as Vector3)
+			var eff_arr := wall_eff_l if wrel.x * wn.x + wrel.z * wn.z >= 0.0 else wall_eff_r
+			var sb: float = float(lat["dist"]) - data.field_at(eff_arr, ws)
 			var vh: float = v.y - float(lat["road_y"])
 			if sb < 0.3 or sb > 11.0:
 				setback_bad += 1

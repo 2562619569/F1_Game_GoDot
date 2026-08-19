@@ -14,6 +14,8 @@ extends Node3D
 ## 外退式护栏 + 砂石路肩:护栏不贴路缘,退到路缘外 barrier_offset 米处,
 ## 视觉高度仅 wall_height(低矮护栏);碰撞墙单独生成,远高于视觉并向下延伸,
 ## 防止车辆腾跃飞出。护栏与路缘之间铺砂石路肩(Gravel 表面,驶入即受罚)。
+## 砂石/护栏/边坡一律锚"有效路缘"(急弯被退距场收拢后的实际路面边):
+## 收拢区路面→砂石连续衔接,不再露草沟;护栏总退距(有效路缘+退距)≤ R-1.5。
 ## 退距收紧(TrackData.allowance_field,详见 track_data.gd 顶部推导):
 ## 弯内侧的允许退距场 = max(R-margin,0) 经斜率≤1 锥形腐蚀——内缘既不越过
 ## 渐屈线(d·κ<1)也不折返(|Δd|≤Δs),领结四边形在构造上不可能;
@@ -80,6 +82,9 @@ var _rg_pts: PackedVector3Array    # 网格查询缓存(免每次字典取数组
 var _rg_widths: PackedFloat32Array
 var _rg_s: PackedFloat32Array
 var _rg_tans: PackedVector3Array
+var _rg_norms: PackedVector3Array  # 逐段平面法线(走廊侧向判定)
+var _rg_eff_l: PackedFloat32Array  # 逐段左侧有效路缘(收拢后实际路面边)
+var _rg_eff_r: PackedFloat32Array  # 逐段右侧有效路缘
 
 var _road_mat: StandardMaterial3D
 var _dirt_mat: StandardMaterial3D
@@ -118,12 +123,13 @@ func build(d: TrackData) -> void:
 	if bool(data.options.get("walls", true)):
 		var off := maxf(0.0, float(data.options.get("barrier_offset", 8.0)))
 		var h := maxf(0.3, float(data.options.get("wall_height", 0.8)))
-		# 砂石路宽独立于护栏退距(缺省回退退距值 = 旧行为:砂石铺满到护栏脚)
+		# 砂石路宽独立于护栏退距(缺省回退退距值 = 旧行为:砂石铺满到护栏脚);
+		# 砂石退距不做护栏的远端收紧(可藏对面路面下),仅曲率收紧——见 _offsets 头注释
 		var gw := maxf(0.0, float(data.options.get("gravel_width", off)))
 		offs_l = _offsets(1.0, off)
 		offs_r = _offsets(-1.0, off)
 		if off > 0.05:
-			var gravel := _build_gravel(gw, offs_l, offs_r)
+			var gravel := _build_gravel(gw, _offsets(1.0, off, false), _offsets(-1.0, off, false))
 			if gravel != null:
 				add_child(gravel)
 		var walls := _build_walls(h, offs_l, offs_r)
@@ -536,7 +542,6 @@ func _build_aprons(offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> St
 	for route in data.routes:
 		var pts: PackedVector3Array = route["pts"]
 		var tans: PackedVector3Array = route["tans"]
-		var widths: PackedFloat32Array = route["widths"]
 		var s_arr: PackedFloat32Array = route["s_arr"]
 		var n := pts.size()
 		var is_main := String(route["surface"]) == "road"
@@ -548,17 +553,17 @@ func _build_aprons(offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> St
 		if not elevated:
 			continue
 		for sgn: float in [1.0, -1.0]:
+			var eff: PackedFloat32Array = _edge_offsets(route, sgn)
 			var kept: Array = []   # [截面索引, 内缘顶点, 坡脚顶点]
 			for i in n:
 				var drop: float = pts[i].y - slab_top
 				if drop <= APRON_MIN_DROP:
 					continue
 				var side := TrackData._flat_normal(tans[i])
-				var half: float = widths[i] * 0.5
-				var inner_off := half + 0.5
+				var inner_off := float(eff[i]) + 0.5
 				if is_main and walls_on and off > 0.05:
 					var w_off: float = float(offs_l[i] if sgn > 0.0 else offs_r[i])
-					inner_off = half + maxf(minf(gw, w_off), 0.3)
+					inner_off = float(eff[i]) + maxf(minf(gw, w_off), 0.3)
 				var inner := pts[i] + side * inner_off * sgn
 				inner.y = pts[i].y - 0.14
 				var want: float = minf((inner.y - slab_top) / APRON_SLOPE, APRON_MAX_RUN)
@@ -716,19 +721,22 @@ func _snap_to_corridor_edge(guess: Vector3, kept: Vector3) -> Vector3:
 	return lo
 
 ## 护栏退距沿主路逐截面计算,两步收紧:
-## 1) 曲率收紧:弯内侧护栏线总偏移(全宽半路面 + 退距)≤ 允许退距场
-##    (margin=BARRIER_INNER_RADIUS,与旧逐点公式 R-half-1.5 等价的场化形式),
-##    场自带 Lipschitz 平滑——替代旧的"逐点硬夹 + 5 点滑动平均",左右对称无台阶;
+## 1) 曲率收紧:弯内侧护栏线总偏移(有效路缘 + 退距)≤ 允许退距场
+##    (margin=BARRIER_INNER_RADIUS)。有效路缘 = 急弯被退距场收拢后的实际路面边
+##    ——护栏贴着真实路面放,不锚全宽(否则收拢区路面与护栏间露草沟);
+##    场自带 Lipschitz 平滑,替代旧的"逐点硬夹 + 5 点滑动平均";
 ##    外侧(凸侧)偏移永不折返,保持全退距;
 ## 2) 距离感知:发卡弯两腿/相邻路段贴近时,曲率还很大护栏就已经立在对面腿的路面上了
 ##    (map_1 实测侵入 7m)。逐截面把护栏线往回收到不落入任何远端路面走廊
 ##    (|Δs|>FAR_S_EXCLUDE 的截面横向 dist ≥ half+FAR_MARGIN),梯子试探 + 二分细化;
 ##    收到 OFFSET_SKIP 以下说明两侧路面已汇合(真实发卡弯弯心本就是全铺装),不放护栏。
-func _offsets(sgn: float, off: float) -> PackedFloat32Array:
+## far_road=false 跳过第 2 步(砂石路肩用:砂石可藏到对面路面之下,由自身的中点
+## 判别(-1.0 余量)控制延伸,不随护栏收紧而消失,否则合并缝重新露草)
+func _offsets(sgn: float, off: float, far_road := true) -> PackedFloat32Array:
 	var pts: PackedVector3Array = data.main["pts"]
-	var widths: PackedFloat32Array = data.main["widths"]
 	var n := pts.size()
 	var field: PackedFloat32Array = _allow_fields(data.main)["barrier"]
+	var eff: PackedFloat32Array = _edge_offsets(data.main, sgn)
 	var out := PackedFloat32Array()
 	out.resize(n)
 	out.fill(off)
@@ -739,33 +747,34 @@ func _offsets(sgn: float, off: float) -> PackedFloat32Array:
 		var inner := -1.0 if cross > 0.0 else 1.0
 		if sgn != inner:
 			continue
-		out[i] = minf(off, maxf(0.0, float(field[i]) - float(widths[i]) * 0.5))
-	# 距离感知收紧(只减不增,收紧后的值仍满足曲率安全)。
+		out[i] = minf(off, maxf(0.0, float(field[i]) - float(eff[i])))
+	# 距离感知收紧(只减不增,收紧后的值仍满足曲率安全;砂石路肩跳过,见函数头注释)。
 	# 冲突只发生在两腿贴近的短弧段内:粗扫(步长 3)定位冲突带,带内才逐截面梯子,
 	# 查询量降一个量级(每回合构建赛道都要跑,调试版 GDScript 必须省着调用)
 	var s_arr: PackedFloat32Array = data.main["s_arr"]
-	var suspect := PackedByteArray()
-	suspect.resize(n)
-	suspect.fill(0)
-	for i in range(0, n, 3):
-		if _hits_far_road(_barrier_point(i, sgn, out[i]), float(s_arr[i])):
-			for k in range(maxi(0, i - 8), mini(n, i + 9)):
-				suspect[k] = 1
-	for i in n:
-		if suspect[i] == 1:
-			out[i] = _far_road_limit(i, sgn, out[i], float(s_arr[i]))
+	if far_road:
+		var suspect := PackedByteArray()
+		suspect.resize(n)
+		suspect.fill(0)
+		for i in range(0, n, 3):
+			if _hits_far_road(_barrier_point(i, sgn, out[i], eff), float(s_arr[i])):
+				for k in range(maxi(0, i - 8), mini(n, i + 9)):
+					suspect[k] = 1
+		for i in n:
+			if suspect[i] == 1:
+				out[i] = _far_road_limit(i, sgn, out[i], float(s_arr[i]), eff)
 	# 远端收紧留下的一格深坑(相邻 8m 中夹 0m)按斜率 ≤1 锥形铺开,
 	# 开缺边沿不结针尖;只降不升,安全约束不破
 	return TrackData.cone_smooth(out, s_arr, 4.0)
 
 ## 梯子试探 + 二分:返回 ≤ want 的最大安全退距
-func _far_road_limit(i: int, sgn: float, want: float, s_own: float) -> float:
-	if want <= OFFSET_SKIP or not _hits_far_road(_barrier_point(i, sgn, want), s_own):
+func _far_road_limit(i: int, sgn: float, want: float, s_own: float, eff: PackedFloat32Array) -> float:
+	if want <= OFFSET_SKIP or not _hits_far_road(_barrier_point(i, sgn, want, eff), s_own):
 		return want
 	var lo := -1.0
 	for cand: float in [4.0, 2.0, 1.0, 0.0]:
 		var safe_cand := minf(cand, want)
-		if not _hits_far_road(_barrier_point(i, sgn, safe_cand), s_own):
+		if not _hits_far_road(_barrier_point(i, sgn, safe_cand, eff), s_own):
 			lo = safe_cand
 			break
 	if lo < 0.0:
@@ -773,36 +782,51 @@ func _far_road_limit(i: int, sgn: float, want: float, s_own: float) -> float:
 	var hi := want
 	for k in 4:
 		var mid := (lo + hi) * 0.5
-		if _hits_far_road(_barrier_point(i, sgn, mid), s_own):
+		if _hits_far_road(_barrier_point(i, sgn, mid, eff), s_own):
 			hi = mid
 		else:
 			lo = mid
 	return lo
 
-## 截面 i 侧向 sgn、退距 off_v 处的护栏线点
-func _barrier_point(i: int, sgn: float, off_v: float) -> Vector3:
+## 截面 i 侧向 sgn、退距 off_v 处的护栏线点(锚有效路缘:急弯收拢后的实际路面边)
+func _barrier_point(i: int, sgn: float, off_v: float, eff: PackedFloat32Array) -> Vector3:
 	var side := TrackData._flat_normal(_rg_tans[i])
-	return _rg_pts[i] + side * (float(_rg_widths[i]) * 0.5 + off_v) * sgn
+	return _rg_pts[i] + side * (float(eff[i]) + off_v) * sgn
 
-## 主路折线段按中点塞进空间网格(查询只看 3×3 邻域,段长 2m 时覆盖 ≥16m)
+## 主路折线段按中点塞进空间网格(查询只看 3×3 邻域,段长 2m 时覆盖 ≥16m)。
+## 同时缓存逐段平面法线与两侧有效路缘(收拢后实际路面边):远端走廊判定用有效路缘,
+## 发卡合并区两腿各自收窄时,不按对方"全宽走廊"误杀(否则双方都不敢铺留草沟)
 func _build_road_grid() -> void:
 	_road_grid = {}
 	_rg_pts = data.main["pts"]
 	_rg_widths = data.main["widths"]
 	_rg_s = data.main["s_arr"]
 	_rg_tans = data.main["tans"]
-	var pts := _rg_pts
-	for i in pts.size() - 1:
-		var key := Vector2i(int(floor((pts[i].x + pts[i + 1].x) * 0.5 / GRID_CELL)), \
-				int(floor((pts[i].z + pts[i + 1].z) * 0.5 / GRID_CELL)))
+	var eff_l: PackedFloat32Array = _edge_offsets(data.main, 1.0)
+	var eff_r: PackedFloat32Array = _edge_offsets(data.main, -1.0)
+	var n := _rg_pts.size()
+	_rg_norms = PackedVector3Array()
+	_rg_norms.resize(maxi(n - 1, 0))
+	_rg_eff_l = PackedFloat32Array()
+	_rg_eff_l.resize(maxi(n - 1, 0))
+	_rg_eff_r = PackedFloat32Array()
+	_rg_eff_r.resize(maxi(n - 1, 0))
+	for i in n - 1:
+		var key := Vector2i(int(floor((_rg_pts[i].x + _rg_pts[i + 1].x) * 0.5 / GRID_CELL)), \
+				int(floor((_rg_pts[i].z + _rg_pts[i + 1].z) * 0.5 / GRID_CELL)))
 		if not _road_grid.has(key):
 			_road_grid[key] = PackedInt32Array()
 		_road_grid[key].append(i)
+		_rg_norms[i] = TrackData._flat_normal(_rg_tans[i])
+		_rg_eff_l[i] = float(eff_l[i])
+		_rg_eff_r[i] = float(eff_r[i])
 
 ## 点是否落入任一远端路面走廊(近弧长段排除:护栏与自己/相邻截面天然贴近,不算冲突;
 ## 垂向分离:高差 ≥ FAR_Y_SEP 视为立体交叉,桥上桥下互不算冲突——护栏/砂石各自保留)。
-## 段级盒预筛先行(内联比较,免 _seg_dist 函数调用),调试版 GDScript 下查询便宜一个量级
-func _hits_far_road(p: Vector3, s_own: float) -> bool:
+## 段级盒预筛先行(内联比较,免 _seg_dist 函数调用),调试版 GDScript 下查询便宜一个量级。
+## margin:走廊外扩余量,护栏用默认 FAR_MARGIN;砂石路肩传负值可伸入对面路面之下
+## (砂石低于路面 3cm,藏于其下,封住合并缝不露草)
+func _hits_far_road(p: Vector3, s_own: float, margin := FAR_MARGIN) -> bool:
 	var cx := int(floor(p.x / GRID_CELL))
 	var cz := int(floor(p.z / GRID_CELL))
 	var qx := p.x
@@ -818,7 +842,10 @@ func _hits_far_road(p: Vector3, s_own: float) -> bool:
 				if absf(float(_rg_s[i]) - s_own) <= FAR_S_EXCLUDE \
 						and absf(float(_rg_s[i + 1]) - s_own) <= FAR_S_EXCLUDE:
 					continue
-				var r := float(_rg_widths[i]) * 0.5 + FAR_MARGIN
+				# 走廊半径 = 对面段朝向查询点一侧的有效路缘(急弯收拢后的实际路面边)+ 余量
+				var fn: Vector3 = _rg_norms[i]
+				var sd := (qx - (a.x + b.x) * 0.5) * fn.x + (qz - (a.z + b.z) * 0.5) * fn.z
+				var r := (float(_rg_eff_l[i]) if sd >= 0.0 else float(_rg_eff_r[i])) + margin
 				if (qx < a.x - r and qx < b.x - r) or (qx > a.x + r and qx > b.x + r) \
 						or (qz < a.z - r and qz < b.z - r) or (qz > a.z + r and qz > b.z + r):
 					continue
@@ -855,13 +882,13 @@ func _main_overhead_cap(p: Vector3, s_own: float) -> float:
 
 ## ---------------- 砂石路肩(路缘 → 砂石外缘,Gravel 表面惩罚) ----------------
 
-## 砂石外缘 = min(gravel_width, 护栏退距收紧值)——砂石路宽独立可调,永不越过护栏线。
+## 砂石外缘 = min(gravel_width, 护栏退距收紧值)——砂石路宽独立可调,永不越过护栏线;
+## 内缘锚有效路缘(急弯被退距场收拢后的实际路面边),收拢区路面→砂石连续不露草沟。
 ## 岔口处砂石 quad 按辅路走廊做精确多边形裁剪(边缘贴合辅路真实边界);
 ## 退距被收紧到 OFFSET_SKIP 以下的截面(汇合弯心)整段不放
 func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
 	var pts: PackedVector3Array = data.main["pts"]
 	var tans: PackedVector3Array = data.main["tans"]
-	var widths: PackedFloat32Array = data.main["widths"]
 	var n := pts.size()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -869,15 +896,15 @@ func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32A
 	var quads := 0
 	for sgn: float in [1.0, -1.0]:
 		var offs := offs_l if sgn > 0.0 else offs_r
+		var eff: PackedFloat32Array = _edge_offsets(data.main, sgn)
 		var kept: Array = []   # [截面索引, {p,oc} 内缘, {p,oc} 外缘]
 		for i in n:
 			var g_off: float = minf(gw, float(offs[i]))
 			if g_off < OFFSET_SKIP:
 				continue
 			var side := TrackData._flat_normal(tans[i])
-			var half: float = widths[i] * 0.5
-			var inner := pts[i] + side * half * sgn
-			var outer := pts[i] + side * (half + g_off) * sgn
+			var inner := pts[i] + side * float(eff[i]) * sgn
+			var outer := pts[i] + side * (float(eff[i]) + g_off) * sgn
 			inner.y -= GRAVEL_SEAM
 			outer.y -= GRAVEL_SLOPE
 			kept.append([i,
@@ -891,7 +918,9 @@ func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32A
 			var gravel_mid: Vector3 = (kept[k][1]["p"] + kept[k][2]["p"] \
 					+ kept[k + 1][1]["p"] + kept[k + 1][2]["p"]) * 0.25
 			var gravel_s := (float(data.main["s_arr"][ia]) + float(data.main["s_arr"][ib])) * 0.5
-			if _hits_far_road(gravel_mid, gravel_s):
+			# 远端走廊判别用负余量:砂石 quad 允许伸到对面路面下缘内 1m(低 3cm 藏于其下),
+			# 封住两腿合并缝不露草;护栏仍用保守正余量
+			if _hits_far_road(gravel_mid, gravel_s, -1.0):
 				continue
 			var poly := _clip_oc([kept[k][1], kept[k][2], kept[k + 1][2], kept[k + 1][1]])
 			if poly.size() < 3:
@@ -917,7 +946,6 @@ func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32A
 func _build_walls(h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
 	var pts: PackedVector3Array = data.main["pts"]
 	var tans: PackedVector3Array = data.main["tans"]
-	var widths: PackedFloat32Array = data.main["widths"]
 	var s_arr: PackedFloat32Array = data.main["s_arr"]
 	var n := pts.size()
 	var vis := SurfaceTool.new()
@@ -928,12 +956,13 @@ func _build_walls(h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Arr
 	var quads := 0
 	for sgn: float in [1.0, -1.0]:
 		var offs := offs_l if sgn > 0.0 else offs_r
+		var eff: PackedFloat32Array = _edge_offsets(data.main, sgn)
 		var kept: Array = []   # [截面索引, 基点, 法线, 碰撞墙顶绝对高度]
 		for i in n:
 			if offs[i] < OFFSET_SKIP:
 				continue  # 两侧路面已汇合(发卡弯心),不放护栏
 			var side := TrackData._flat_normal(tans[i])
-			var base := pts[i] + side * (widths[i] * 0.5 + offs[i]) * sgn
+			var base := pts[i] + side * (float(eff[i]) + float(offs[i])) * sgn
 			base.y -= GRAVEL_SLOPE
 			var cor := _corridor_at(base, CORRIDOR_MARGIN)
 			if bool(cor["blocked"]):

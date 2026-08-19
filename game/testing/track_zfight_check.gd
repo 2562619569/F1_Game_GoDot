@@ -69,8 +69,11 @@ func _init() -> void:
 	ok(below_grass == 0, "辅路整体高于草面(越界 %d)" % below_grass)
 
 	# --- 外退护栏:任何顶点不得落在路面走廊内(发卡弯两腿/汇合弯心不留墙) ---
+	# 路面范围按有效路缘分(急弯收拢区路面边 < 全宽半路面,护栏贴实际路面边)
 	var wall_bad := 0
 	var on_road := 0
+	var eff_l := tb._edge_offsets(data.main, 1.0)
+	var eff_r := tb._edge_offsets(data.main, -1.0)
 	if walls != null:
 		var wmi: MeshInstance3D = walls.get_child(1)
 		var wverts: PackedVector3Array = wmi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
@@ -78,7 +81,11 @@ func _init() -> void:
 			if tb._corridor_at(v, -0.3)["blocked"]:
 				wall_bad += 1
 			var lat := data.main_lateral(v)
-			if float(lat["dist"]) < float(lat["half"]) - 0.15:
+			var ws := float(lat["s"])
+			var wn := data.normal_at(ws)
+			var wrel: Vector3 = v - (lat["foot"] as Vector3)
+			var eff_arr := eff_l if wrel.x * wn.x + wrel.z * wn.z >= 0.0 else eff_r
+			if float(lat["dist"]) < data.field_at(eff_arr, ws) - 0.15:
 				on_road += 1
 	ok(walls != null and wall_bad == 0, "护栏在岔口走廊断开(开口区残留顶点 %d)" % wall_bad)
 	ok(walls != null and on_road == 0, "护栏不落入任何路面走廊(发卡弯邻腿/弯心,落上 %d)" % on_road)
