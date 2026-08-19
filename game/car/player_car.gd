@@ -23,6 +23,7 @@ var race: RaceManager = null  # 注入用于火箭锁定；调试场景可为 nu
 var _throttle := 0.0
 var _brake := 0.0
 var _brake_hold := 0.0
+var _was_frozen := true      # 冻结→发车沿：GO 时抬离合，预拉转速落进 1 挡
 
 var tactical: Array = []  # [{pid, cfg, ammo, cd_left}]
 var stealth_left := 0.0
@@ -45,14 +46,27 @@ func _physics_process(delta: float) -> void:
 	if vehicle == null:
 		return
 	if frozen:
-		_throttle = 0.0
+		# 准备期轰油门：油门直通引擎自由拉转速（空挡/离合分离，不传扭矩），
+		# 刹车+手刹锁车不动；_throttle 同样整形，GO 后油门深度无缝衔接
+		var raw_rev := 0.0
+		if not Match.auto_test:
+			raw_rev = Input.get_action_strength("Throttle")
+		_throttle = _ramp(_throttle, pow(raw_rev, 2.0), THROTTLE_RISE, THROTTLE_FALL, delta)
 		_brake = 0.0
 		_brake_hold = 0.0
-		vehicle.throttle_input = 0.0
+		vehicle.throttle_input = _throttle
 		vehicle.brake_input = 0.5
 		vehicle.steering_input = 0.0
 		vehicle.handbrake_input = 1.0
+		vehicle.clutch_input = 1.0
+		_was_frozen = true
 		return
+
+	if _was_frozen:
+		# 发车瞬间抬离合：准备期攒下的转速经离合扭矩砸进 1 挡弹射起步，
+		# 手刹/刹车同帧改读真实输入（松开）即释放
+		_was_frozen = false
+		vehicle.clutch_input = 0.0
 
 	if Match.auto_test:  # 冒烟测试：自动驾驶沿赛道中心线
 		_throttle = 0.0

@@ -37,6 +37,7 @@ GODOT="C:/Tools/Godot/Godot.exe"   # 4.7.1 stable，唯一可用引擎路径（E
 | 车辆美术装配/碰撞体重建 | `-s game/testing/collision_check.gd`、`-s game/testing/wheel_assembly_check.gd`；新车走 adapt-car skill | ~10s |
 | R 倒转（rewind/幽灵） | `--path . res://game/testing/rewind_check.tscn` | ~1 分钟 |
 | 发车网格/结算落库 | `--path . res://game/testing/grid_check.tscn` | 秒级 |
+| 玩家车准备期轰油门/GO 弹射 | `--path . res://game/testing/launch_check.tscn` | ~15s |
 | 掉落抽取（Loot 表语义） | `--path . res://game/testing/loot_roll_check.tscn` | 秒级 |
 | 天气词缀 weather_env | `--headless --path . -s res://game/testing/env_check.gd` | 秒级 |
 | 展厅 showroom | `--path . res://game/testing/showroom_check.tscn` 和 `showroom_flow_check.tscn` | 秒级 |
