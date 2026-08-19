@@ -64,7 +64,7 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 	# 碰撞震屏（Shaker 方向性脉冲，实现在 smooth_chase_camera.impact_kick）：
 	# 车身开启接触上报（contact_monitor/max_contacts_reported 已由 CollisionKick
 	# 统一开启，body_entered 是多播信号，本接线与冲击放大互不影响），按撞击
-	# 相对速度映射强度，轻蹭（<6 m/s）不触发；rel 是自车相对对方的速度，即
+	# 相对速度映射严重度，轻蹭（<6 m/s）不触发；rel 是自车相对对方的速度，即
 	# 指向撞击源，kick 取反方向——相机往被撞的反方向甩再回弹；
 	# cam_shake 总开关在相机内门控，脉冲与持续微震一并生效/关闭
 	var pv := player_racer.vehicle
@@ -75,7 +75,7 @@ static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: 
 		var impact := rel.length()
 		if impact > 6.0:
 			cam.impact_kick(-rel / maxf(impact, 0.001),
-					clampf((impact - 6.0) / 40.0, 0.03, 0.3)))
+					clampf((impact - 6.0) / 34.0, 0.0, 1.0)))
 
 	return {"track": track, "track_data": track_data, "racers": racers,
 		"player_racer": player_racer, "player_torque": player_racer.vehicle.max_torque,
@@ -163,7 +163,8 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	v.collision_mask = Racer.CAR_MASK
 	CarMeshBuilder.attach_visual(v, cid, appearance)  # 美术装配，缺资源自动回退占位视觉
 	# 车-车碰撞冲击放大（Game 表 bump_* 可调）：双方各挂一份、各推自己一记，
-	# 撞点夹取进碰撞盒求力矩 → 角落撞甩尾、正撞硬推（见 collision_kick.gd）
+	# 撞点夹取进碰撞盒求力矩 → 角落撞甩尾、正撞硬推；重击另开失稳窗口
+	# （被撞车回稳系统短暂降压，见 collision_kick.gd）
 	var kick := COLLISION_KICK.new()
 	kick.name = "CollisionKick"
 	v.add_child(kick)
@@ -172,6 +173,9 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 		"min_speed": Match.game_cfg("bump_min_speed"),
 		"max_speed": Match.game_cfg("bump_max_speed"),
 		"yaw": Match.game_cfg("bump_yaw"),
+		"destab_speed": Match.game_cfg("bump_destab_speed"),
+		"destab_time": Match.game_cfg("bump_destab_time"),
+		"destab_grip": Match.game_cfg("bump_destab_grip"),
 	})
 	# 出生抬高 SPAWN_DROP（见常量注释）：挂点 y 须在美术装配后读取，
 	# 占位回退路径不写挂点，保留场景默认值。

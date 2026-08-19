@@ -4,15 +4,16 @@ extends SceneTree
 ## 1. 匀速直线（20 m/s，-Z 前进）：相机悬在车后（+Z 侧），高度≈follow_height；
 ## 2. 动态 FOV：中速抬升、高速逼近 maximum_fov；
 ## 3. look_back 动作：相机甩到车头侧，松开回到车尾侧；
-## 4. impact_kick（Shaker 方向性脉冲）：哑元偏移沿撞击方向甩出（峰值后回落）；
+## 4. impact_kick（Shaker 方向性脉冲）：幅度有上限、按严重度延长，沿撞击方向
+##    快速甩出后小幅反弹并回落；
 ## 5. 转向方波（模拟键盘 A/D 阶跃）+ 急甩头：相机逐帧姿态变化被低通压住，
 ##    且静置后视线仍收敛于车身（平滑不牺牲跟随）；
 ## 6. 视角模式：cycle 到追尾近参数按比例收紧；引擎盖/保险杠刚性锚定车身
 ##    （车前/高于原点/偏移量精确等于锚点长度/视线随车头、look_back 后翻），
 ##    保险杠锚点比引擎盖更靠前更低；切回追尾远恢复基准参数；
 ## 7. 环视：orbit_look 侧向甩头后相机横移到车身侧，松手指数回正归零；
-## 8. 持续震动源：巡航(20 m/s)三源全零，重刹+侧滑叠加为正，纯高速为正，
-##    且强度写入 Brownian 幅度、哑元上产生实际偏移；
+## 8. 持续震动源：巡航(20 m/s)三源全零；高速/重刹/侧滑三路各有正确主轴，
+##    且缓入后的强度写入 Brownian 幅度、哑元上产生实际偏移；
 ## 9. 震动总开关：shake_enabled=false 时持续源幅度归零、impact_kick 被忽略。
 ## 目标用冻结刚体（可设 linear_velocity/steering/brake_input/local_velocity），
 ## physics_frame 回调晚于相机 _physics_process，故用 call_deferred 对齐
@@ -107,18 +108,27 @@ func _on_phys() -> void:
 		ok(cam.global_position.z > target.global_position.z, "camera returns behind after look_back")
 		ok(cam.fov > 80.0, "FOV near max at 40 m/s (%.1f, want ≈85)" % cam.fov)
 
-	# ---- 4. 碰撞脉冲（Shaker 方向性 kick）。测试桩里组件 timer 以约半速推进
-	# （headless process 帧节奏），kick 时长压到 0.12s≈15 tick，止于 400 起的
-	# 平滑测量窗口之前 ----
+	# ---- 4. 碰撞脉冲（Shaker 方向性 kick）。先核对正式参数的量级/时长，
+	# 再把测试时长压到 0.12s；headless 中组件 timer 约半速推进，确保在 400
+	# 起的平滑测量窗口前结束 ----
 	if tick == 372:
-		cam.kick_duration = 0.12
+		ok(cam.kick_position_max <= 0.08 and cam.kick_position_min >= 0.004,
+				"impact displacement bounded (%.3f..%.3f m)" % [cam.kick_position_min, cam.kick_position_max])
+		ok(cam.kick_duration_min >= 0.24 and cam.kick_duration_max >= 0.40,
+				"impact recovery lasts by severity (%.2f..%.2f s)" % [cam.kick_duration_min, cam.kick_duration_max])
+		cam.kick_duration_min = 0.12
+		cam.kick_duration_max = 0.12
 		_kick_dir = Vector3(0.5, 0.1, 0.8).normalized()
 		cam.impact_kick(_kick_dir, 0.3)
+		ok(cam._shaker._external_shakes.size() == 1,
+				"impact queues one overriding pulse")
 	if tick >= 372 and tick < 398:
-		_kick_peak = maxf(_kick_peak, cam._shake_target.position.dot(_kick_dir))
+		var local_kick_dir := (cam.global_transform.basis.inverse() * _kick_dir).normalized()
+		_kick_peak = maxf(_kick_peak, cam._shake_target.position.dot(local_kick_dir))
 	if tick == 398:
-		ok(_kick_peak > 0.05, "impact kick swings along impact dir (peak %.3f m)" % _kick_peak)
-		ok(cam._shake_target.position.length() < 0.01,
+		ok(_kick_peak > 0.005 and _kick_peak < 0.05,
+				"impact kick is directional and restrained (peak %.3f m)" % _kick_peak)
+		ok(cam._shake_target.position.length() < 0.003,
 				"impact kick decays to zero (%.4f m)" % cam._shake_target.position.length())
 
 	# ---- 5. 平滑性测量：转向方波 + 急甩头（跳过震屏期） ----
@@ -205,16 +215,28 @@ func _on_phys() -> void:
 		ok(cam._continuous_shake_intensity() == 0.0, "cruise 20 m/s: no continuous shake")
 		target.brake_input = 1.0
 		target.local_velocity = Vector3(6.0, 0.0, -20.0)
-		var i: float = cam._continuous_shake_intensity()
-		ok(i > 0.01 and i < 0.06, "brake+drift stack above zero (%.4f)" % i)
+		var sources: Vector3 = cam._continuous_shake_sources()
+		ok(sources.x == 0.0 and sources.y > 0.0 and sources.z > 0.0,
+				"brake+drift remain separate sources (%s)" % sources)
+		var brake_pos: Vector3 = cam._rumble_position_amplitude(Vector3(0.0, sources.y, 0.0))
+		var brake_rot: Vector3 = cam._rumble_rotation_amplitude(Vector3(0.0, sources.y, 0.0))
+		ok(brake_pos.y > brake_pos.x and brake_rot.x > brake_rot.z,
+				"brake rumble favors vertical motion and pitch")
+		var drift_pos: Vector3 = cam._rumble_position_amplitude(Vector3(0.0, 0.0, sources.z))
+		var drift_rot: Vector3 = cam._rumble_rotation_amplitude(Vector3(0.0, 0.0, sources.z))
+		ok(drift_pos.x > drift_pos.y and drift_rot.z > drift_rot.x,
+				"drift rumble favors lateral motion and roll")
 		target.brake_input = 0.0
 		target.local_velocity = Vector3.ZERO
 	if tick == 950:
-		var i2: float = cam._continuous_shake_intensity()
-		ok(i2 > 0.005 and i2 < 0.02, "high speed road rumble only (%.4f)" % i2)
-		ok(absf(cam._rumble_pos.amplitude.x - i2) < 1e-6,
-				"rumble intensity drives brownian amplitude (%.4f)" % cam._rumble_pos.amplitude.x)
-		ok(cam._shake_target.position.length() > 1e-4,
+		var speed_sources: Vector3 = cam._continuous_shake_sources()
+		ok(speed_sources.x > 0.002 and speed_sources.x <= 0.004
+				and speed_sources.y == 0.0 and speed_sources.z == 0.0,
+				"high speed road rumble stays subtle (%s)" % speed_sources)
+		ok(cam._rumble_pos.amplitude.y > cam._rumble_pos.amplitude.x
+				and cam._rumble_pos.amplitude.length() < 0.005,
+				"road texture favors vertical motion after easing (%s)" % cam._rumble_pos.amplitude)
+		ok(cam._shake_target.position.length() > 1e-6,
 				"brownian rumble reaches shake target (%.4f m)" % cam._shake_target.position.length())
 
 	# ---- 10. 震动总开关 ----

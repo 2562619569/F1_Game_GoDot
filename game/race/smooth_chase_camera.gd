@@ -36,19 +36,23 @@ extends "res://addons/pro_vehicle_camera/pro_vehicle_camera.gd"
 @export_group("Shake Sources")
 ## 总开关（race_builder 注入 Game 表 cam_shake）：门控脉冲与持续两类震屏。
 @export var shake_enabled := true
-## 各源增益（持续微震动幅度，米）：高速路面 / 重刹 / 漂移侧滑。
-@export var shake_speed_gain := 0.010
-@export var shake_brake_gain := 0.020
-@export var shake_drift_gain := 0.022
+## 各源最大量级（米）：路面是细碎纵向纹理，制动偏点头，漂移偏横摆。
+@export var shake_speed_gain := 0.004
+@export var shake_brake_gain := 0.006
+@export var shake_drift_gain := 0.008
+## 持续源缓入快、缓出慢，避免踩刹车/结束漂移时震动硬切。
+@export var shake_attack := 12.0
+@export var shake_release := 5.0
 
 @export_group("Impact Kick")
-## 碰撞脉冲时长（秒）。
-@export var kick_duration := 0.30
-## 位移补偿：外挂震动 ease 包络（默认 0.25/0.25，x^0.25·(1-x)^0.25）中段
-## ≈0.7，乘回后峰值 ≈ 强度。
-@export var kick_gain := 1.4
-## 旋转混乱量级（rad / 米强度）：碰撞瞬态白噪声旋转的冲击感来源。
-@export var kick_rot_gain := 0.25
+## 碰撞严重度 0..1 映射的位移与时长。轻碰只提示，重撞才有完整回弹。
+@export var kick_position_min := 0.006
+@export var kick_position_max := 0.075
+@export var kick_duration_min := 0.28
+@export var kick_duration_max := 0.52
+## 方向性转动与残余随机扰动（插件内部还会乘 PI/2 转为弧度）。
+@export var kick_rot_gain := 0.16
+@export var kick_chaos_gain := 0.025
 
 enum ViewMode { CHASE_FAR, CHASE_NEAR, HOOD, BUMPER }
 
@@ -85,6 +89,7 @@ var _shaker: ShakerComponent3D = null   # Shaker 组件（抖哑元，见 _build
 var _shake_target: Node3D = null   # 哑元：本地 transform 只被 Shaker 写，相机每帧读
 var _rumble_pos: ShakerTypeBrownianShake3D = null   # 持续微震两路游走，幅度由物理帧实时写
 var _rumble_rot: ShakerTypeBrownianShake3D = null
+var _rumble_levels := Vector3.ZERO   # x=高速路感，y=制动，z=漂移（均为米量级）
 
 func _ready() -> void:
 	super()
@@ -244,71 +249,111 @@ func _build_shaker() -> void:
 	add_child(_shaker)
 	_shaker.play_shake()
 
-## 碰撞脉冲（方向性）：world_dir 为撞击反方向（世界系），strength 为位移
-## 量级（米）。位置通道 = 脉冲曲线（0→峰→0，峰在中点）× 方向幅度，相机
-## 往 world_dir 甩出再回弹；旋转通道 = 白噪声混乱（碰撞瞬态要的是冲击感）。
-## 包络用 shake() 默认 0.25/0.25（宽平台型，实测中段 ~0.7），kick_gain 补偿。
-func impact_kick(world_dir: Vector3, strength: float) -> void:
+## 碰撞脉冲：world_dir 是被撞后的甩出方向（世界系），severity 为 0..1。
+## 曲线快速到峰、轻微反向回弹后慢收尾；新碰撞覆盖旧脉冲，避免接触事件叠加爆幅。
+func impact_kick(world_dir: Vector3, severity: float) -> void:
 	if not shake_enabled or _shaker == null:
 		return
-	var dir := world_dir.normalized()
-	if dir.length_squared() < 0.25:
+	var world_kick_dir := world_dir.normalized()
+	if world_kick_dir.length_squared() < 0.25:
 		return
+	var shaped_severity := pow(clampf(severity, 0.0, 1.0), 0.75)
+	var strength := lerpf(kick_position_min, kick_position_max, shaped_severity)
+	var duration := lerpf(kick_duration_min, kick_duration_max, shaped_severity)
+	# 哑元存本地偏移，最终经相机 basis 转回世界；方向也先转到相机本地。
+	var dir := (global_transform.basis.inverse() * world_kick_dir).normalized()
 	var preset := ShakerPreset3D.new()
-	var kick := ShakerTypeCurve3D.new()
-	kick.loop = false
-	# 三轴各持一份 Curve：类型 setter 会 connect changed 信号，共享实例会
-	# 触发 "already connected" 报错
-	var shape_x := Curve.new()
-	var shape_y := Curve.new()
-	var shape_z := Curve.new()
-	for shape: Curve in [shape_x, shape_y, shape_z]:
-		shape.add_point(Vector2(0.0, 0.0))
-		shape.add_point(Vector2(0.5, 1.0))
-		shape.add_point(Vector2(1.0, 0.0))
-	kick.curve_x = shape_x
-	kick.curve_y = shape_y
-	kick.curve_z = shape_z
-	kick.amplitude = dir * strength * kick_gain
+	var kick := _impact_curve(dir * strength)
+	# 侧撞以滚转为主、正撞以俯仰为主，方向和车身受力保持一致。
+	var recoil_axis := Vector3(-dir.z, dir.y * 0.2, dir.x)
+	var recoil := _impact_curve(recoil_axis * strength * kick_rot_gain)
 	var chaos := ShakerTypeRandom3D.new()
-	chaos.amplitude = Vector3.ONE * (strength * kick_rot_gain)
+	chaos.amplitude = Vector3.ONE * (strength * kick_chaos_gain)
 	preset.PositionShake = [kick]
-	preset.RotationShake = [chaos]
-	_shaker.shake(preset, ShakerComponent3D.ShakeAddMode.add,
-			kick_duration, 1.0 / kick_duration, 1.0)
+	preset.RotationShake = [recoil, chaos]
+	# override 只决定本帧混合方式，不会移除列表里的旧项；显式清空可避免
+	# “重撞后紧接轻碰”结束时，尚未到期的旧重撞短暂重新出现。
+	_shaker._external_shakes.clear()
+	_shaker.shake(preset, ShakerComponent3D.ShakeAddMode.override,
+			duration, 1.0 / duration, 1.0, 0.12, 0.45)
 
-## 常驻微震强度（纯函数，自检用）：高速路面 + 重刹 + 漂移侧滑三源叠加，
-## 量级 ~0.05m（碰撞脉冲 0.03~0.3m 的下限以下，只做肌理不做事件感）。
-func _continuous_shake_intensity() -> float:
+func _impact_curve(amplitude: Vector3) -> ShakerTypeCurve3D:
+	var shake_curve := ShakerTypeCurve3D.new()
+	shake_curve.loop = false
+	# 每轴必须独享 Curve；插件 setter 会连接 changed，共享会重复连接报错。
+	var curves: Array[Curve] = [Curve.new(), Curve.new(), Curve.new()]
+	for shape: Curve in curves:
+		shape.add_point(Vector2(0.0, 0.0))
+		shape.add_point(Vector2(0.12, 1.0))
+		shape.add_point(Vector2(0.42, 0.32))
+		shape.add_point(Vector2(0.70, -0.10))
+		shape.add_point(Vector2(1.0, 0.0))
+	shake_curve.curve_x = curves[0]
+	shake_curve.curve_y = curves[1]
+	shake_curve.curve_z = curves[2]
+	shake_curve.amplitude = amplitude
+	return shake_curve
+
+## 三路持续源（纯函数，自检用）：x=高速路感，y=制动，z=漂移。
+func _continuous_shake_sources() -> Vector3:
 	var v := follow_this
 	var spd := _car_speed()
-	var inten := 0.0
+	var sources := Vector3.ZERO
 	if spd > SHAKE_SPEED_ONSET:
-		inten += shake_speed_gain * clampf((spd - SHAKE_SPEED_ONSET) / 20.0, 0.0, 1.0)
+		sources.x = shake_speed_gain * clampf((spd - SHAKE_SPEED_ONSET) / 20.0, 0.0, 1.0)
 	if "brake_input" in v and spd > SHAKE_BRAKE_SPEED:
-		inten += shake_brake_gain * float(v.brake_input) * clampf(spd / 30.0, 0.0, 1.0)
+		sources.y = shake_brake_gain * float(v.brake_input) * clampf(spd / 30.0, 0.0, 1.0)
 	if "local_velocity" in v and spd > SHAKE_DRIFT_SPEED:
 		var slip := absf(float(v.local_velocity.x))
 		if slip > SHAKE_DRIFT_SLIP:
-			inten += shake_drift_gain * clampf((slip - SHAKE_DRIFT_SLIP) / 6.0, 0.0, 1.0)
-	return inten
+			sources.z = shake_drift_gain * clampf((slip - SHAKE_DRIFT_SLIP) / 6.0, 0.0, 1.0)
+	return sources
+
+func _continuous_shake_intensity() -> float:
+	var sources := _continuous_shake_sources()
+	return sources.x + sources.y + sources.z
+
+func _rumble_position_amplitude(levels: Vector3) -> Vector3:
+	# 路面以纵向细碎跳动为主，制动抖在竖直方向，漂移集中于横向。
+	return Vector3(levels.x * 0.25 + levels.y * 0.12 + levels.z,
+			levels.x + levels.y * 0.70 + levels.z * 0.30, 0.0)
+
+func _rumble_rotation_amplitude(levels: Vector3) -> Vector3:
+	# 制动主俯仰(X)，漂移主滚转(Z)；高速仅保留极轻的全向车身纹理。
+	return Vector3(levels.x * 0.05 + levels.y * 0.32,
+			levels.x * 0.025 + levels.z * 0.05,
+			levels.x * 0.04 + levels.z * 0.34)
 
 ## 物理帧末尾：持续源强度写入两路 Brownian 的幅度（x/y 抖、z 不抖——
 ## 近贴车身/保险杠视角下前后抖会拍出车头闪动，旧版同款约定），再把哑元
 ## 上累积的震动偏移/旋转叠到相机全局位姿——PVC 牵引/刚性锚定先写基准，
 ## 震动只做叠加，与旧 _apply_continuous_shake 同一注入槽位。
-func _apply_shake(_delta: float) -> void:
+func _apply_shake(delta: float) -> void:
 	if _shaker == null:
 		return
-	var inten := _continuous_shake_intensity() if shake_enabled else 0.0
-	_rumble_pos.amplitude = Vector3(inten, inten * 0.8, 0.0)
-	_rumble_rot.amplitude = Vector3(0.10, 0.08, 0.12) * inten
-	global_position += _shake_target.position
+	var target_levels := _continuous_shake_sources() if shake_enabled else Vector3.ZERO
+	if not shake_enabled:
+		_rumble_levels = Vector3.ZERO
+	else:
+		_rumble_levels.x = _smooth_rumble(_rumble_levels.x, target_levels.x, delta)
+		_rumble_levels.y = _smooth_rumble(_rumble_levels.y, target_levels.y, delta)
+		_rumble_levels.z = _smooth_rumble(_rumble_levels.z, target_levels.z, delta)
+	var pos_amplitude := _rumble_position_amplitude(_rumble_levels)
+	var rot_amplitude := _rumble_rotation_amplitude(_rumble_levels)
+	if not _rumble_pos.amplitude.is_equal_approx(pos_amplitude):
+		_rumble_pos.amplitude = pos_amplitude
+	if not _rumble_rot.amplitude.is_equal_approx(rot_amplitude):
+		_rumble_rot.amplitude = rot_amplitude
+	global_position += global_transform.basis * _shake_target.position
 	var r := _shake_target.rotation
 	if r != Vector3.ZERO:
 		global_transform.basis = global_transform.basis \
 				.rotated(Vector3.RIGHT, r.x).rotated(Vector3.UP, r.y) \
 				.rotated(Vector3.BACK, r.z)
+
+func _smooth_rumble(current: float, target_value: float, delta: float) -> float:
+	var rate := shake_attack if target_value > current else shake_release
+	return lerpf(current, target_value, 1.0 - exp(-rate * delta))
 
 func _car_speed() -> float:
 	if "linear_velocity" in follow_this:
