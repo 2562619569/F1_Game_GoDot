@@ -18,9 +18,15 @@ const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
 const NPC_COLOR := Color(0.62, 0.62, 0.66)  # 交通车灰，与竞速车队伍色区分
 
-## NPC 交通靶车底盘池（Car 表 701~ 段：参数与玩家车同源、美术 id 独立，
-## art/cars 无对应目录时 CarMeshBuilder 自动回退占位视觉，后续按 adapt-car 接入）
-const NPC_CAR_IDS := [701, 702, 703]
+## NPC 交通靶车三类型：底盘/掉落路线配对，被撞爆的掉落稀有度权重越来越好
+## （npc_common < npc_rare < npc_elite，Loot 表驱动）；刷新概率反过来递减
+## （Game 表 npc_w_common/rare/elite = 70/25/5）。美术 id 段独立：art/cars 无对应
+## 目录时 CarMeshBuilder 自动回退占位视觉，后续按 adapt-car 接入
+const NPC_TYPES := [
+	{"car_id": 701, "route": "npc_common"},
+	{"car_id": 702, "route": "npc_rare"},
+	{"car_id": 703, "route": "npc_elite"},
+]
 
 ## 出生离地净空：车身抬到静态贴地位之上该高度，靠悬挂自由沉降落地。
 ## 与"出生即静态贴地"的差别：地图重烘焙后发车位与路面可能互嵌毫米级，
@@ -214,18 +220,42 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	r.ctrl = ctrl
 	return r
 
-## NPC 交通靶车生成（Game 表 npc_count/npc_hp/npc_speed_scale 可调）：
-## 沿主路中后段均匀铺开，避开头部发车区；数量为 0 时整段跳过（配表可一键关闭）
+## NPC 交通靶车生成：密度每回合在 [npc_count_min, npc_count] 随机滚一次，
+## 每台车按 Game 表 npc_w_* 权重抽类型（越好越少见）；沿主路中后段均匀铺开，
+## 避开头部发车区。数量滚到 0 时整段跳过（配表 min=0 可完全关闭）
 static func _spawn_npcs(race: RaceManager, track: Node3D, track_data: TrackData, loot_cb: Callable) -> void:
-	var count := int(Match.game_cfg("npc_count"))
+	var count := _roll_npc_count()
 	if count <= 0:
 		return
 	var hp := Match.game_cfg("npc_hp")
 	var speed_scale := Match.game_cfg("npc_speed_scale")
+	var weights := [Match.game_cfg("npc_w_common"), Match.game_cfg("npc_w_rare"),
+		Match.game_cfg("npc_w_elite")]
 	for i in count:
-		var cid: int = NPC_CAR_IDS[i % NPC_CAR_IDS.size()]
+		var def: Dictionary = NPC_TYPES[_roll_npc_type(weights)]
 		var spot := _npc_spot(track, track_data, i, count)
-		_make_npc(race, track_data, cid, spot, hp, speed_scale, loot_cb)
+		_make_npc(race, track_data, int(def.car_id), String(def.route), spot, hp, speed_scale, loot_cb)
+
+## 每回合 NPC 密度：[npc_count_min, npc_count] 均匀随机（min 夹到 [0, max]）
+static func _roll_npc_count() -> int:
+	var hi := int(Match.game_cfg("npc_count"))
+	var lo := clampi(int(Match.game_cfg("npc_count_min")), 0, hi)
+	return randi_range(lo, hi)
+
+## NPC 类型权重抽样：返回 NPC_TYPES 下标；负权重按 0 计，全 0 退化为均匀
+static func _roll_npc_type(weights: Array) -> int:
+	var total := 0.0
+	for w in weights:
+		total += maxf(float(w), 0.0)
+	if total <= 0.0:
+		return randi() % NPC_TYPES.size()
+	var pick := randf() * total
+	var acc := 0.0
+	for i in weights.size():
+		acc += maxf(float(weights[i]), 0.0)
+		if pick < acc:
+			return i
+	return NPC_TYPES.size() - 1
 
 ## NPC 出生点：有赛道数据 = 主路弧长 [0.2L, 0.92L] 均匀取点 + 横向随机车道，
 ## 车头朝路线切线；兜底直线图复用主路 loot 点（贴地、朝 -z）
@@ -243,8 +273,8 @@ static func _npc_spot(track: Node3D, track_data: TrackData, i: int, count: int) 
 
 ## NPC 单车装配：与 _make_racer 同款物理/视觉/冲击链路，差异：
 ## - 挂 CarHealth（可被撞损，CollisionKick 按接近速度结算伤害）；
-## - Driver 换 npc_car.gd（慢速巡航 + 撞爆掉落），不建 Racer（不排名不解冻依赖）
-static func _make_npc(race: RaceManager, track_data: TrackData, cid: int, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
+## - Driver 换 npc_car.gd（慢速巡航 + 撞爆按类型掉落），不建 Racer（不排名不解冻依赖）
+static func _make_npc(race: RaceManager, track_data: TrackData, cid: int, drop_route: String, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
 	var root := Node3D.new()
 	root.name = "NPC-%d" % cid
 	var v: Vehicle = CAR_SCENE.instantiate()
@@ -280,7 +310,7 @@ static func _make_npc(race: RaceManager, track_data: TrackData, cid: int, spot: 
 	ctrl.name = "Driver"
 	ctrl.set_script(NPC_SCRIPT)
 	root.add_child(ctrl)
-	ctrl.setup(v, track_data, spot.lane, speed_scale, race, loot_cb)
+	ctrl.setup(v, track_data, spot.lane, speed_scale, race, loot_cb, drop_route)
 
 ## 玩家车引擎声：VNS 合成组件（多 RPM 分层交叉淡化 + 事件音效），
 ## 采样库缺失时回退 GEVP 自带单采样变调，保证不出无声车

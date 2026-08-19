@@ -51,6 +51,7 @@ func _ready() -> void:
 	seed(20260818)
 	_check_tables()
 	_check_health_unit()
+	_check_type_rolls()
 	await _check_collision_damage()
 	await _check_destroy_chain()
 	var pass_ := failures == 0
@@ -58,9 +59,57 @@ func _ready() -> void:
 	print("[NPC] %s (fails=%d)" % ["PASS" if pass_ else "FAIL", failures])
 	get_tree().quit(0 if pass_ else 1)
 
+# ---------------- 1b. 类型抽样 / 密度随机 / 掉落梯度 ----------------
+
+## 权重抽样与密度滚取的分布验证 + 三类型撞爆掉落稀有度统计梯度
+func _check_type_rolls() -> void:
+	# 类型抽样：2000 次对照权重复算（容差与 loot_roll_check 同口径 4%）
+	var weights := [Match.game_cfg("npc_w_common"), Match.game_cfg("npc_w_rare"),
+		Match.game_cfg("npc_w_elite")]
+	var total: float = weights[0] + weights[1] + weights[2]
+	var cnt := [0, 0, 0]
+	for i in 2000:
+		cnt[RaceBuilder._roll_npc_type(weights)] += 1
+	var dist_ok := true
+	for i in 3:
+		if absf(cnt[i] / 2000.0 - float(weights[i]) / total) > 0.04:
+			dist_ok = false
+	ok(dist_ok, "类型抽样分布符合权重（2000 次容差 4%）",
+			"%d/%d/%d" % [cnt[0], cnt[1], cnt[2]])
+	ok(cnt[0] > cnt[1] and cnt[1] > cnt[2], "common 出现最多、elite 最少",
+			"%d > %d > %d" % [cnt[0], cnt[1], cnt[2]])
+
+	# 密度随机：200 次全部落在 [min,max] 且取值确有变化
+	var hi := int(Match.game_cfg("npc_count"))
+	var lo := clampi(int(Match.game_cfg("npc_count_min")), 0, hi)
+	var seen := {}
+	var in_range := true
+	for i in 200:
+		var c := RaceBuilder._roll_npc_count()
+		if c < lo or c > hi:
+			in_range = false
+		seen[c] = true
+	ok(in_range, "密度滚取全部在 [%d, %d] 区间内" % [lo, hi], str(seen.keys()))
+	ok(seen.size() >= 2, "每回合密度确实随机（出现 ≥2 种取值）", str(seen.keys()))
+
+	# 掉落梯度：各类型路线 800 件抽样，平均稀有度严格递增
+	var avg := {}
+	for r in ["npc_common", "npc_rare", "npc_elite"]:
+		var s := 0.0
+		var n := 0
+		for i in 800:
+			var pids: Array = Match.roll_route_drops(r)
+			if not pids.is_empty() and int(pids[0]) >= 1:
+				s += float(Settings.part.data[int(pids[0])].rarity)
+				n += 1
+		avg[r] = s / maxf(n, 1.0)
+	ok(avg["npc_elite"] > avg["npc_rare"] and avg["npc_rare"] > avg["npc_common"],
+			"撞爆掉落平均稀有度梯度：common < rare < elite",
+			"%.2f < %.2f < %.2f" % [avg["npc_common"], avg["npc_rare"], avg["npc_elite"]])
+
 # ---------------- 1. 配表 ----------------
 
-## 701~703 与 601~603 全部物理字段逐项一致（只差 name/desc），美术 id 段独立
+## NPC 三类型掉落路线：结构 + 递进关系（稀有度越来越好、刷新概率越来越低）
 func _check_tables() -> void:
 	var fields := ["drive", "top_speed", "accel", "handling", "weight", "perf_slots",
 			"func_slots", "grip_road", "grip_offroad", "max_torque", "max_rpm",
@@ -79,12 +128,52 @@ func _check_tables() -> void:
 				diffs.append(f)
 		ok(diffs.is_empty(), "NPC %d 物理参数与玩家车 %d 逐项一致" % [npc_id, 601 + i],
 				", ".join(diffs))
-	ok(Match.game_cfg("npc_count") >= 1.0, "npc_count >= 1", "= %d" % int(Match.game_cfg("npc_count")))
+	var hi := int(Match.game_cfg("npc_count"))
+	var lo := int(Match.game_cfg("npc_count_min"))
+	ok(hi >= 1 and lo >= 0 and lo <= hi, "密度随机区间合法 [npc_count_min, npc_count]",
+			"[%d, %d]" % [lo, hi])
 	ok(Match.game_cfg("npc_hp") > 0.0, "npc_hp > 0", "= %.0f" % Match.game_cfg("npc_hp"))
 	ok(Match.game_cfg("npc_speed_scale") > 0.0 and Match.game_cfg("npc_speed_scale") <= 1.0,
 			"npc_speed_scale 在 (0,1]", "= %.2f" % Match.game_cfg("npc_speed_scale"))
 	ok(Match.game_cfg("npc_damage_coeff") > 0.0, "npc_damage_coeff > 0",
 			"= %.2f" % Match.game_cfg("npc_damage_coeff"))
+	var wc := Match.game_cfg("npc_w_common")
+	var wr := Match.game_cfg("npc_w_rare")
+	var we := Match.game_cfg("npc_w_elite")
+	ok(wc > 0.0 and wr > 0.0 and we > 0.0, "三类型刷新权重均 > 0",
+			"= %.0f/%.0f/%.0f" % [wc, wr, we])
+	ok(wc > wr and wr > we, "刷新概率随类型递减（common > rare > elite）",
+			"%.0f > %.0f > %.0f" % [wc, wr, we])
+	var lw := {}
+	for row in Settings.loot.data.values():
+		lw[String(row.route)] = row
+	for r in ["npc_common", "npc_rare", "npc_elite"]:
+		if lw.has(r):
+			ok(int(lw[r].drop_count) == 1, "%s 单次撞爆掉 1 件" % r)
+		else:
+			ok(false, "Loot 表存在 %s 掉落路线" % r)
+	ok(_hi_share(lw, "npc_elite") > _hi_share(lw, "npc_rare")
+			and _hi_share(lw, "npc_rare") > _hi_share(lw, "npc_common"),
+			"掉落稀有度越来越好（r3+r4 权重占比递增）",
+			"%.2f < %.2f < %.2f" % [_hi_share(lw, "npc_common"), _hi_share(lw, "npc_rare"), _hi_share(lw, "npc_elite")])
+	var has_all := lw.has("npc_common") and lw.has("npc_rare") and lw.has("npc_elite")
+	ok(has_all and int(lw["npc_elite"].guarantee_rarity) > int(lw["npc_rare"].guarantee_rarity)
+			and int(lw["npc_rare"].guarantee_rarity) > int(lw["npc_common"].guarantee_rarity),
+			"掉落保底稀有度随类型递增",
+			"%d < %d < %d" % [int(lw["npc_common"].guarantee_rarity),
+					int(lw["npc_rare"].guarantee_rarity), int(lw["npc_elite"].guarantee_rarity)])
+
+## 某路线 r3+r4 权重占总量比例（越高掉落越好）
+func _hi_share(lw: Dictionary, route: String) -> float:
+	if not lw.has(route):
+		return -1.0
+	var w: PackedStringArray = String(lw[route].rarity_weights).split("|", false)
+	if w.size() != 4:
+		return -1.0
+	var total := 0.0
+	for x in w:
+		total += float(x)
+	return (float(w[2]) + float(w[3])) / total if total > 0.0 else -1.0
 
 # ---------------- 2. CarHealth 单元 ----------------
 
@@ -230,7 +319,7 @@ func _check_destroy_chain() -> void:
 	ctrl.name = "Driver"
 	ctrl.set_script(NPC_SCRIPT)
 	root.add_child(ctrl)
-	ctrl.setup(v, null, 2.0, 0.45, race_stub, func(pid: int): drops.append(pid))
+	ctrl.setup(v, null, 2.0, 0.45, race_stub, func(pid: int): drops.append(pid), "npc_elite")
 
 	ok(ctrl.frozen == true, "装配后冻结待发车")
 	race_stub.race_started.emit()
@@ -252,6 +341,9 @@ func _check_destroy_chain() -> void:
 	ok(boomed, "爆点生成爆炸粒子")
 	if loot != null:
 		ok(Settings.part.data.has(int(loot.part_id)), "掉落 id 在 Part 表", "= %d" % int(loot.part_id))
+		ok(int(Settings.part.data[int(loot.part_id)].rarity) >= 2,
+				"掉落稀有度符合 npc_elite 保底（≥2）",
+				"rarity=%d" % int(Settings.part.data[int(loot.part_id)].rarity))
 		# 玩家车组拾取：直接驱动 loot 的 body 入口（player_car 组才收）
 		var player_body := StaticBody3D.new()
 		player_body.add_to_group("player_car")

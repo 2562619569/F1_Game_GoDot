@@ -3,8 +3,10 @@ extends Node3D
 ## - 样条跟随巡航（TrackFollower，速度乘 npc_speed_scale 慢速行驶）；
 ## - 血量由车体下 "CarHealth" 子节点承载（race_builder 装配），碰撞伤害由
 ##   CollisionKick 结算，玩家/AI 赛车不挂该组件天然免疫；
-## - 被撞爆（CarHealth.destroyed）：爆点抛一发随机配件掉落（走 loot_pickup 同一
-##   拾取链路，loot_cb 由 race_builder 注入）+ 一次性自发光碎片粒子，随后整车退场。
+## - 类型（common/rare/elite）由 race_builder 按 Game 表权重抽定并注入 drop_route，
+##   被撞爆（CarHealth.destroyed）按该路线滚掉落（Loot 表 npc_* 行：稀有度权重
+##   越好的类型越高、刷新概率越低），走 loot_pickup 同一拾取链路
+##   （loot_cb 由 race_builder 注入）+ 一次性自发光碎片粒子，随后整车退场。
 ## 不参与排名/检查点/发车网格，也不进 RaceManager.racers（解冻走 race_started 信号）。
 
 const LOOT_SCENE := preload("res://game/race/loot_pickup.tscn")
@@ -13,12 +15,14 @@ const SHARD_LIFETIME := 1.2   # 碎片粒子寿命（s），粒子节点随之�
 
 var vehicle: Vehicle
 var frozen := true
+var drop_route := "npc_common"
 var loot_cb: Callable
 var _follower: TrackFollower
 
 func setup(v: Vehicle, data: TrackData, lane: float, speed_scale: float,
-		race: RaceManager, cb: Callable) -> void:
+		race: RaceManager, cb: Callable, route := "npc_common") -> void:
 	vehicle = v
+	drop_route = route
 	loot_cb = cb
 	_follower = TrackFollower.new(data, lane, speed_scale)
 	var health := v.get_node_or_null("CarHealth")
@@ -44,16 +48,16 @@ func _on_destroyed(_car: Node) -> void:
 	_spawn_explosion(pos)
 	vehicle.get_parent().queue_free()  # 车根 Node3D（含车体与本驱动）整体退场
 
-## 爆点随机配件：类别全池均匀抽一件再按类别滚稀有度（口径与 roll_route_drops 一致）
+## 撞爆掉落：按本车类型的 Loot 路线滚（npc_common/rare/elite 各有稀有度权重与
+## 保底，取首件）；类别缺失的防御返回（pid<1）跳过不补偿
 func _spawn_loot(pos: Vector3) -> void:
-	var cats := Match.PERF_CATEGORIES + Match.FUNC_CATEGORIES
-	var pid := Match.roll_part(cats[randi() % cats.size()], 1)
-	if pid < 1:
-		return  # 类别空池的防御返回，跳过不补偿
+	var pids: Array = Match.roll_route_drops(drop_route)
+	if pids.is_empty() or int(pids[0]) < 1:
+		return
 	var loot := LOOT_SCENE.instantiate()
 	loot.position = pos + Vector3(0, 0.2, 0)  # 车原点离地≈静止高度，微抬避开路面嵌合
 	vehicle.get_parent().get_parent().add_child(loot)  # 挂到 race 节点（车根即将销毁）
-	loot.setup(pid, "hazard")
+	loot.setup(int(pids[0]), drop_route)
 	if loot_cb.is_valid():
 		loot.collected.connect(loot_cb)
 
