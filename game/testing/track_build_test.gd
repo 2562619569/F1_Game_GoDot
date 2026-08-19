@@ -103,6 +103,28 @@ func _ready() -> void:
 			"急弯护栏不越过弯心且极小弯心断开(越界 %d,断开采样 %d)" \
 			% [barrier_curve_bad, barrier_curve_skips])
 
+	# --- 退距场核心性质(Lipschitz 斜率 ≤1:弯内缘平滑收拢,领结在构造上不可能) ---
+	var saw := PackedFloat32Array([8.0, 8.0, 0.0, 8.0, 8.0])
+	var saw_s := PackedFloat32Array([0.0, 2.0, 4.0, 6.0, 8.0])
+	var cone := TrackData.cone_smooth(saw, saw_s, 4.0)
+	var cone_bad := 0
+	for i in cone.size() - 1:
+		if absf(float(cone[i + 1]) - float(cone[i])) \
+				> float(saw_s[i + 1]) - float(saw_s[i]) + 0.001:
+			cone_bad += 1
+	ok(cone_bad == 0 and float(cone[2]) == 0.0,
+			"锥形腐蚀斜率≤1 且坑底保留(肩部 %.2f,坑底 %.2f)" \
+			% [float(cone[0]), float(cone[2])])
+	var main_s_arr: PackedFloat32Array = data.main["s_arr"]
+	var edge_lip_bad := 0
+	for sgn: float in [1.0, -1.0]:
+		var edges: PackedFloat32Array = builder._edge_offsets(data.main, sgn)
+		for i in range(1, edges.size() - 1):
+			if absf(float(edges[i + 1]) - float(edges[i])) \
+					> float(main_s_arr[i + 1]) - float(main_s_arr[i]) + 0.001:
+				edge_lip_bad += 1
+	ok(edge_lip_bad == 0, "路缘有效半宽斜率≤1(弯内平滑收拢,越界 %d)" % edge_lip_bad)
+
 	var road_winding_bad := 0
 	var road_triangles := 0
 	for road_node in get_tree().get_nodes_in_group("Road"):

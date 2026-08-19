@@ -115,6 +115,63 @@ func _compute_radii(route: Dictionary) -> void:
 		radii[i] = minf(9999.0, la * lb * lc / (2.0 * absf(cross)))
 	route["radii"] = radii
 
+## ---------------- 曲率退距场(赛道面/护栏/路缘共用几何核心) ----------------
+## 偏移曲线理论:中心线曲率 κ 处按距离 d 做法线偏移,内侧 d·κ ≥ 1 时偏移线
+## 越过渐屈线(evolute)发生折返(领结四边形);此外 d 的变化率 |Δd| > |Δs| 时
+## 内缘沿轨道方向的行进速度超过中心线,同样折返。两个条件合成一个充分约束:
+## d(s) ≤ A(s) 且 A 满足 Lipschitz 斜率 ≤1——即"允许退距场"。
+## 锥形腐蚀(1-D 距离变换的双向 min 传播)恰好给出满足该约束的最大场:
+## A(s) = min_j (raw(j) + |s - j|),O(n) 两趟扫描,天然左右对称。
+
+## 任意逐采样标量场的锥形腐蚀 + 软化:
+## 1) 双向 min 传播(|Δ| ≤ Δs)——斜率 ≤1 的最大保形变换;
+## 2) ±soft_m 弧长三角窗加权平均(软化 45° 坡肩折角),再与原场取 min(只软不升,
+##    软化永不越过原始上限,安全约束不破);
+## 3) 再补一次 min 传播:min(软化值, 原值) 在窗边缘理论上可产生斜率 >1 的段,
+##    重传播将其剪平,最终返回值严格满足 Lipschitz 斜率 ≤1。
+static func cone_smooth(field: PackedFloat32Array, s_arr: PackedFloat32Array, \
+		soft_m := 4.0) -> PackedFloat32Array:
+	var n := field.size()
+	var out := field.duplicate()
+	for i in range(1, n):
+		out[i] = minf(out[i], out[i - 1] + (float(s_arr[i]) - float(s_arr[i - 1])))
+	for i in range(n - 2, -1, -1):
+		out[i] = minf(out[i], out[i + 1] + (float(s_arr[i + 1]) - float(s_arr[i])))
+	if soft_m <= 0.0 or n < 3:
+		return out
+	var span := float(s_arr[n - 1] - s_arr[0])
+	var step := span / float(n - 1) if n > 1 else 1.0
+	var win := maxi(1, int(ceilf(soft_m / maxf(step, 0.25))))
+	var soft := PackedFloat32Array()
+	soft.resize(n)
+	for i in n:
+		var acc := 0.0
+		var wsum := 0.0
+		for k in range(maxi(i - win, 0), mini(i + win + 1, n)):
+			var d := absf(float(s_arr[k]) - float(s_arr[i]))
+			if d > soft_m:
+				continue
+			var w := 1.0 - d / soft_m
+			acc += float(out[k]) * w
+			wsum += w
+		soft[i] = minf(acc / wsum if wsum > 0.0 else float(out[i]), float(out[i]))
+	for i in range(1, n):
+		soft[i] = minf(soft[i], soft[i - 1] + (float(s_arr[i]) - float(s_arr[i - 1])))
+	for i in range(n - 2, -1, -1):
+		soft[i] = minf(soft[i], soft[i + 1] + (float(s_arr[i + 1]) - float(s_arr[i])))
+	return soft
+
+## 曲率半径 → 允许退距场:raw = max(R - margin, 0),再锥形腐蚀 + 软化。
+## margin 是弯心保留半径(路缘 ROAD_INNER_RADIUS / 护栏 BARRIER_INNER_RADIUS)。
+static func allowance_field(radii: PackedFloat32Array, s_arr: PackedFloat32Array, \
+		margin: float, soft_m := 4.0) -> PackedFloat32Array:
+	var n := radii.size()
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in n:
+		raw[i] = maxf(float(radii[i]) - margin, 0.0)
+	return cone_smooth(raw, s_arr, soft_m)
+
 ## 任意点相对主路的横向信息(辅路岔口融合/护栏开缺等均用它),字段见 route_lateral
 func main_lateral(pos: Vector3) -> Dictionary:
 	return route_lateral(main, pos)
@@ -262,6 +319,12 @@ func width_at(s: float, route: Dictionary = {}) -> float:
 		return 24.0
 	var w := _window(s, rt)
 	return lerpf(widths[w[0] - 1], widths[w[0]], w[1])
+
+## 逐采样标量场(退距场/有效半宽等)按弧长插值
+func field_at(values: PackedFloat32Array, s: float, route: Dictionary = {}) -> float:
+	var rt: Dictionary = route if not route.is_empty() else main
+	var w := _window(s, rt)
+	return lerpf(float(values[w[0] - 1]), float(values[w[0]]), float(w[1]))
 
 ## AI 限速:窗口内最小曲率半径 → 目标速度(≈ sqrt(μgR),μ≈1.2)
 func corner_speed(s_from: float, span: float) -> float:

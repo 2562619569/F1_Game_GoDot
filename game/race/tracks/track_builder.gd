@@ -14,8 +14,11 @@ extends Node3D
 ## 外退式护栏 + 砂石路肩:护栏不贴路缘,退到路缘外 barrier_offset 米处,
 ## 视觉高度仅 wall_height(低矮护栏);碰撞墙单独生成,远高于视觉并向下延伸,
 ## 防止车辆腾跃飞出。护栏与路缘之间铺砂石路肩(Gravel 表面,驶入即受罚)。
-## 退距双保险收紧:弯内侧按曲率夹住防偏移线自交;发卡弯两腿/相邻路段贴近时
-## 逐截面按远端路面走廊收紧,两侧路面汇合处(真实发卡弯弯心)整段不放。
+## 退距收紧(TrackData.allowance_field,详见 track_data.gd 顶部推导):
+## 弯内侧的允许退距场 = max(R-margin,0) 经斜率≤1 锥形腐蚀——内缘既不越过
+## 渐屈线(d·κ<1)也不折返(|Δd|≤Δs),领结四边形在构造上不可能;
+## 发卡弯两腿/相邻路段贴近时再逐截面按远端路面走廊收紧,
+## 两侧路面汇合处(真实发卡弯弯心)整段不放。
 ## 岔口处按辅路走廊(融合后 dirt 路面高度的覆盖区)自动开缺;
 ## 高架辅路(桥)不阻断护栏,但护栏碰撞墙在其下留净空。
 
@@ -71,6 +74,7 @@ const APRON_MAX_RUN := 60.0        # 坡长上限(超高路堤坡脚截断,余�
 var data: TrackData = null
 var junctions: Array = []   # 岔口记录:[{s: 主路弧长, half: 沿主路断开半长}](测试用)
 var dirt_corridors: Array = []  # 融合后 dirt 走廊(护栏/砂石路开缺依据,测试用)
+var _fields := {}          # 退距场缓存:路由键 → {"road": …, "barrier": …}(与 pts 对齐)
 var _road_grid: Dictionary = {}  # 主路段空间网格:Vector2i cell → PackedInt32Array(段索引)
 var _rg_pts: PackedVector3Array    # 网格查询缓存(免每次字典取数组)
 var _rg_widths: PackedFloat32Array
@@ -87,6 +91,7 @@ func build(d: TrackData) -> void:
 	name = "TrackBuilt"
 	junctions = []
 	dirt_corridors = []
+	_fields = {}
 	_road_mat = _mat(Color(0.22, 0.23, 0.26))
 	_dirt_mat = _mat(Color(0.52, 0.40, 0.26), 1.0)
 	_grass_mat = _mat(Color(0.30, 0.55, 0.28))
@@ -212,20 +217,33 @@ func _build_strip(route: Dictionary, group: String, mat: StandardMaterial3D) -> 
 					_add_strip_vert(st, poly[k - 1])
 	return _body_with_mesh(st.commit(), group)
 
-## Tight curves can have a radius smaller than half the road width. A full-width
-## normal offset then crosses the curve centre and turns adjacent ribbon quads
-## inside-out. Collapse only the inner edge, and spread the reduction to nearby
-## samples without ever exceeding each sample's local curvature limit.
+## 路由的允许退距场(缓存):road = 路缘退距(margin=ROAD_INNER_RADIUS),
+## barrier = 护栏线总退距上限(margin=BARRIER_INNER_RADIUS,锚定全宽半路面)。
+## 融合路由(_blend_dirt 产物)与原路由同 id 但几何不同,键上区分。
+func _allow_fields(route: Dictionary) -> Dictionary:
+	var key := String(route.get("id", "")) + ("|blended" if route.has("_blended") else "")
+	if not _fields.has(key):
+		_fields[key] = {
+			"road": TrackData.allowance_field(route["radii"], route["s_arr"], ROAD_INNER_RADIUS),
+			"barrier": TrackData.allowance_field(route["radii"], route["s_arr"], BARRIER_INNER_RADIUS),
+		}
+	return _fields[key]
+
+## 弯内侧有效半宽(逐采样,与 pts 对齐):min(半宽, 允许退距场)。
+## 急弯半径可小于半宽,全宽法线偏移会越过弯心把条带翻折;只收内缘,
+## 外缘(凸侧)偏移永不折返保持全宽。退距场经 Lipschitz 锥形腐蚀,
+## 内缘在弯前平滑收拢、弯心处收至弯心点,不再有逐点硬夹的台阶/锯齿。
 func _edge_offsets(route: Dictionary, sgn: float) -> PackedFloat32Array:
 	var pts: PackedVector3Array = route["pts"]
 	var widths: PackedFloat32Array = route["widths"]
-	var radii: PackedFloat32Array = route["radii"]
+	var field: PackedFloat32Array = _allow_fields(route)["road"]
 	var n := pts.size()
-	var raw := PackedFloat32Array()
-	raw.resize(n)
+	var out := PackedFloat32Array()
+	out.resize(n)
 	for i in n:
-		raw[i] = widths[i] * 0.5
-	for i in range(1, n - 1):
+		out[i] = float(widths[i]) * 0.5
+		if i == 0 or i == n - 1:
+			continue
 		var cross := _turn_cross(pts[i - 1], pts[i], pts[i + 1])
 		if absf(cross) < 1e-6:
 			continue
@@ -233,16 +251,7 @@ func _edge_offsets(route: Dictionary, sgn: float) -> PackedFloat32Array:
 		# signed x/z cross has the opposite sign from the inward normal side.
 		var inner := -1.0 if cross > 0.0 else 1.0
 		if sgn == inner:
-			raw[i] = minf(raw[i], maxf(0.0, float(radii[i]) - ROAD_INNER_RADIUS))
-	var out := PackedFloat32Array()
-	out.resize(n)
-	for i in n:
-		var acc := 0.0
-		var cnt := 0
-		for k in range(maxi(i - 2, 0), mini(i + 3, n)):
-			acc += raw[k]
-			cnt += 1
-		out[i] = minf(raw[i], acc / float(cnt))
+			out[i] = minf(out[i], float(field[i]))
 	return out
 
 func _turn_cross(a: Vector3, b: Vector3, c: Vector3) -> float:
@@ -261,54 +270,24 @@ func _add_strip_vert(st: SurfaceTool, d: Dictionary) -> void:
 	st.set_uv(d["uv"])
 	st.add_vertex(d["p"])
 
-## A sharp sampled turn can make the default diagonal of a ribbon quad
-## self-intersect. Try the other diagonal first; if neither triangulation is
-## valid, keep only the larger valid triangle instead of emitting a giant wedge.
+## 条带四边形固定绕序发射。内缘退距经 Lipschitz 收紧后,相邻截面左右顶点
+## 恒保持横向次序,领结(对角自交)在构造上不可能——不再需要换对角线兜底;
+## 发卡弯弯心处截面完全收拢时四边形退化为线,按面积阈值跳过。
+## 绕序符号按截面法向逐四边形校验(侧向向量连续无翻转,符号恒一致)。
 func _emit_strip_quad(st: SurfaceTool, quad: Array) -> void:
 	var p0: Vector3 = quad[0]["p"]
 	var p1: Vector3 = quad[1]["p"]
 	var p2: Vector3 = quad[2]["p"]
-	var p3: Vector3 = quad[3]["p"]
-	var nrm: Vector3 = (quad[0]["nrm"] + quad[1]["nrm"] + quad[2]["nrm"] + quad[3]["nrm"]).normalized()
-	var s0: float = (p2 - p0).cross(p1 - p0).dot(nrm)
-	var s1: float = (p3 - p0).cross(p2 - p0).dot(nrm)
-	var a0: float = (p3 - p0).cross(p1 - p0).dot(nrm)
-	var a1: float = (p3 - p1).cross(p2 - p1).dot(nrm)
-	if _same_winding(s0, s1):
-		if s0 < 0.0:
-			_emit_strip_tri(st, quad[0], quad[2], quad[1])
-			_emit_strip_tri(st, quad[0], quad[3], quad[2])
-		else:
-			_emit_strip_tri(st, quad[0], quad[1], quad[2])
-			_emit_strip_tri(st, quad[0], quad[2], quad[3])
+	var nrm: Vector3 = ((quad[0]["nrm"] as Vector3) + (quad[2]["nrm"] as Vector3)).normalized()
+	var s := (p2 - p0).cross(p1 - p0).dot(nrm)
+	if absf(s) < 0.0001:
 		return
-	if _same_winding(a0, a1):
-		if a0 < 0.0:
-			_emit_strip_tri(st, quad[0], quad[3], quad[1])
-			_emit_strip_tri(st, quad[1], quad[3], quad[2])
-		else:
-			_emit_strip_tri(st, quad[0], quad[1], quad[3])
-			_emit_strip_tri(st, quad[1], quad[2], quad[3])
-		return
-	# A bow-tie has no valid two-triangle tessellation. Keep the largest
-	# correctly wound half; the following sample closes the tiny resulting gap.
-	var best := -1
-	var best_area := 0.0001
-	for candidate in [s0, s1, a0, a1]:
-		if candidate < -best_area:
-			best_area = -candidate
-			best = 0 if candidate == s0 else (1 if candidate == s1 else (2 if candidate == a0 else 3))
-	if best == 0:
+	if s < 0.0:
 		_emit_strip_tri(st, quad[0], quad[2], quad[1])
-	elif best == 1:
 		_emit_strip_tri(st, quad[0], quad[3], quad[2])
-	elif best == 2:
-		_emit_strip_tri(st, quad[0], quad[3], quad[1])
-	elif best == 3:
-		_emit_strip_tri(st, quad[1], quad[3], quad[2])
-
-func _same_winding(a: float, b: float) -> bool:
-	return absf(a) >= 0.0001 and absf(b) >= 0.0001 and signf(a) == signf(b)
+	else:
+		_emit_strip_tri(st, quad[0], quad[1], quad[2])
+		_emit_strip_tri(st, quad[0], quad[2], quad[3])
 
 func _emit_strip_tri(st: SurfaceTool, a: Dictionary, b: Dictionary, c: Dictionary) -> void:
 	_add_strip_vert(st, a)
@@ -737,7 +716,10 @@ func _snap_to_corridor_edge(guess: Vector3, kept: Vector3) -> Vector3:
 	return lo
 
 ## 护栏退距沿主路逐截面计算,两步收紧:
-## 1) 曲率夹紧:弯内侧偏移半径 ≤ R-half-BARRIER_INNER_RADIUS(防偏移线局部自交),5 点滑动平均抹台阶;
+## 1) 曲率收紧:弯内侧护栏线总偏移(全宽半路面 + 退距)≤ 允许退距场
+##    (margin=BARRIER_INNER_RADIUS,与旧逐点公式 R-half-1.5 等价的场化形式),
+##    场自带 Lipschitz 平滑——替代旧的"逐点硬夹 + 5 点滑动平均",左右对称无台阶;
+##    外侧(凸侧)偏移永不折返,保持全退距;
 ## 2) 距离感知:发卡弯两腿/相邻路段贴近时,曲率还很大护栏就已经立在对面腿的路面上了
 ##    (map_1 实测侵入 7m)。逐截面把护栏线往回收到不落入任何远端路面走廊
 ##    (|Δs|>FAR_S_EXCLUDE 的截面横向 dist ≥ half+FAR_MARGIN),梯子试探 + 二分细化;
@@ -745,34 +727,20 @@ func _snap_to_corridor_edge(guess: Vector3, kept: Vector3) -> Vector3:
 func _offsets(sgn: float, off: float) -> PackedFloat32Array:
 	var pts: PackedVector3Array = data.main["pts"]
 	var widths: PackedFloat32Array = data.main["widths"]
-	var radii: PackedFloat32Array = data.main["radii"]
 	var n := pts.size()
-	var raw := PackedFloat32Array()
-	raw.resize(n)
-	raw.fill(off)
+	var field: PackedFloat32Array = _allow_fields(data.main)["barrier"]
+	var out := PackedFloat32Array()
+	out.resize(n)
+	out.fill(off)
 	for i in range(1, n - 1):
-		var a := pts[i - 1]
-		var b := pts[i]
-		var c := pts[i + 1]
-		var cross := _turn_cross(a, b, c)
+		var cross := _turn_cross(pts[i - 1], pts[i], pts[i + 1])
 		if absf(cross) < 1e-6:
 			continue
 		var inner := -1.0 if cross > 0.0 else 1.0
 		if sgn != inner:
 			continue
-		raw[i] = minf(off, maxf(0.0, float(radii[i]) - float(widths[i]) * 0.5 - BARRIER_INNER_RADIUS))
-	var out := PackedFloat32Array()
-	out.resize(n)
-	for i in n:
-		var acc := 0.0
-		var cnt := 0
-		for k in range(maxi(i - 2, 0), mini(i + 3, n)):
-			acc += raw[k]
-			cnt += 1
-		# Smoothing may only tighten neighbouring samples. Letting it raise this
-		# sample above raw[i] would reintroduce the exact bend-centre crossing.
-		out[i] = minf(raw[i], acc / float(cnt))
-	# 距离感知收紧(只减不增,平滑后的值仍保证安全)。
+		out[i] = minf(off, maxf(0.0, float(field[i]) - float(widths[i]) * 0.5))
+	# 距离感知收紧(只减不增,收紧后的值仍满足曲率安全)。
 	# 冲突只发生在两腿贴近的短弧段内:粗扫(步长 3)定位冲突带,带内才逐截面梯子,
 	# 查询量降一个量级(每回合构建赛道都要跑,调试版 GDScript 必须省着调用)
 	var s_arr: PackedFloat32Array = data.main["s_arr"]
@@ -786,15 +754,9 @@ func _offsets(sgn: float, off: float) -> PackedFloat32Array:
 	for i in n:
 		if suspect[i] == 1:
 			out[i] = _far_road_limit(i, sgn, out[i], float(s_arr[i]))
-	# Far-road clipping can create an isolated 0m sample between 8m samples.
-	# Spread that reduction over the same short arc so wall/gravel quads do not
-	# form a needle when the barrier opens and resumes.
-	for pass_idx in 2:
-		var prev := out.duplicate()
-		for i in range(1, n - 1):
-			var avg := (float(prev[i - 1]) + float(prev[i]) + float(prev[i + 1])) / 3.0
-			out[i] = minf(float(prev[i]), avg)
-	return out
+	# 远端收紧留下的一格深坑(相邻 8m 中夹 0m)按斜率 ≤1 锥形铺开,
+	# 开缺边沿不结针尖;只降不升,安全约束不破
+	return TrackData.cone_smooth(out, s_arr, 4.0)
 
 ## 梯子试探 + 二分:返回 ≤ want 的最大安全退距
 func _far_road_limit(i: int, sgn: float, want: float, s_own: float) -> float:
@@ -1031,13 +993,21 @@ func _build_markings() -> MeshInstance3D:
 	while s < data.length - CENTER_DASH_LENGTH:
 		_mark_quad(st, s, s + CENTER_DASH_LENGTH, 0.15, 0, lift)
 		s += CENTER_DASH_PERIOD
-	# 边线:连续,宽 0.25,距路缘 0.4;岔口处断开(给辅路留出开口)
+	# 边线:连续,宽 0.25,距路缘 0.4;岔口处断开(给辅路留出开口)。
+	# 横向位置按有效半宽取(急弯内缘被退距场收拢后,全宽位置会画到草地/砂石上);
+	# 收拢到不足 0.3m 处不再画边线(弯心本就是全铺装汇合区)
 	s = 0.0
+	var edge_l := _edge_offsets(data.main, 1.0)
+	var edge_r := _edge_offsets(data.main, -1.0)
 	while s < data.length - 6.0:
 		if not _in_junction_mouth(s + 3.0):
-			var w := data.width_at(s + 3.0) * 0.5 - 0.4
-			_mark_quad(st, s, s + 6.0, 0.125, w, lift)
-			_mark_quad(st, s, s + 6.0, 0.125, -w, lift)
+			var sm := s + 3.0
+			var wl := data.field_at(edge_l, sm) - 0.4
+			var wr := data.field_at(edge_r, sm) - 0.4
+			if wl > 0.3:
+				_mark_quad(st, s, s + 6.0, 0.125, wl, lift)
+			if wr > 0.3:
+				_mark_quad(st, s, s + 6.0, 0.125, -wr, lift)
 		s += 6.0
 
 	var mi := MeshInstance3D.new()
