@@ -137,6 +137,8 @@ ok(window.eval("viewMode") === "3d" && $("vm3d").classList.contains("on"), "左�
 let drew3d = false;
 try { window.eval("drawView()"); drew3d = true; } catch (e) { console.log("3D 渲染异常: " + e); }
 ok(drew3d, "3D 软件渲染管线不抛错");
+const clipN = window.eval("v3ClipNear([{x:0,y:0,z:0},{x:1,y:0,z:3},{x:-1,y:0,z:3}]).length");
+ok(clipN === 4, "近平面裁剪:一眼后顶点裁出四边形(" + clipN + " 顶点)");
 ok(window.eval("v3Gather().length") > 100, "3D 几何四边形收集 " + window.eval("v3Gather().length") + " 个(路面/砂石/护栏)");
 const ptsBefore3d = mainRoute().points.length;
 view.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 500, clientY: 400, button: 0 }));

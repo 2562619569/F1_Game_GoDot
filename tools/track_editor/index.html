@@ -762,11 +762,41 @@ function v3Project(p, B){
           B.H/2 - B.fl*(dx*B.ux + dy*B.uy + dz*B.uz)/z, z];
 }
 
+/** 世界点 → 相机空间坐标(不投影;近面裁剪/多边形填充用) */
+function v3ToCam(p, B){
+  const dx = p.x-B.ex, dy = p.y-B.ey, dz = p.z-B.ez;
+  return { x: dx*B.rx + dy*B.ry + dz*B.rz,
+           y: dx*B.ux + dy*B.uy + dz*B.uz,
+           z: dx*B.fx + dy*B.fy + dz*B.fz };
+}
+
+/** 相机空间点 → 屏幕 [sx, sy](须已在近平面之前) */
+function v3ProjCam(c, B){
+  return [B.W/2 + B.fl*c.x/c.z, B.H/2 - B.fl*c.y/c.z];
+}
+
+/** 相机空间多边形按近平面(z ≥ NEAR)裁剪(Sutherland-Hodgman 单面):
+ *  相机贴近/低角度时跨越眼面的四边形不再整块消失,只裁掉身后的部分 */
+function v3ClipNear(poly){
+  const NEAR = 1.5;
+  const out = [];
+  for (let i = 0; i < poly.length; i++){
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ain = a.z >= NEAR, bin = b.z >= NEAR;
+    if (ain) out.push(a);
+    if (ain !== bin){
+      const t = (NEAR - a.z) / (b.z - a.z);
+      out.push({ x: a.x + (b.x - a.x)*t, y: a.y + (b.y - a.y)*t, z: NEAR });
+    }
+  }
+  return out;
+}
+
 /** 收集世界四边形(4 顶点 + 基色),供画家算法统一投影排序 */
 function v3Gather(){
   const quads = [];
   const stride = Math.max(1, Math.round(4 / Math.max(0.5, S.options.sample_step)));  // ≥4m 一格,长赛道降面数
-  const push = (a, b, c, d, col) => quads.push({ p: [a, b, c, d], c: col });
+  const push = (a, b, c, d, col) => quads.push({ p: d ? [a, b, c, d] : [a, b, c], c: col });
   const corner = (s, sgn, off, dy) => {
     const n = normalOf(s);
     return { x: s.x + n.x*off*sgn, y: s.y + (dy || 0), z: s.z + n.z*off*sgn };
@@ -813,6 +843,18 @@ function v3Gather(){
     };
     lineQuad(bm.samples[bm.anchorIdx || 0], V3C.sfS);
     lineQuad(bm.samples[bm.samples.length-1], V3C.sfF);
+    // 起点前进方向 chevron(起点线前方两个绿色箭头,3D 里直接读出行车朝向)
+    const sA = bm.samples[bm.anchorIdx || 0];
+    const nA = normalOf(sA);
+    for (let k = 0; k < 2; k++){
+      const f = 5 + k * 5;
+      const cx = sA.x + sA.tx*f, cyz = sA.z + sA.tz*f, cy = sA.y + 0.07;
+      push(
+        { x: cx - sA.tx*0.6 + nA.x*2.2, y: cy, z: cyz - sA.tz*0.6 + nA.z*2.2 },
+        { x: cx - sA.tx*0.6 - nA.x*2.2, y: cy, z: cyz - sA.tz*0.6 - nA.z*2.2 },
+        { x: cx + sA.tx*1.8, y: cy, z: cyz + sA.tz*1.8 },
+        null, V3C.sfS);
+    }
   }
   return quads;
 }
@@ -858,22 +900,18 @@ function drawView3D(){
     }
   }
 
-  // 世界四边形:投影 → 平均深度排序(远→近)→ 平面光照填充
+  // 世界多边形 → 相机空间 → 近平面裁剪(跨眼面只裁身后部分,不整块消失)
+  // → 平均深度排序(远→近)→ 平面光照填充
   const quads = v3Gather();
   const lit = [];
   for (const q of quads){
-    const ps = [];
-    let ok = true;
-    for (const p of q.p){
-      const s = proj(p, B);
-      if (!s){ ok = false; break; }
-      ps.push(s);
-    }
-    if (!ok) continue;
-    let depth = 0, ySum = 0;
-    for (const s of ps) depth += s[2];
+    const cam = q.p.map(p => v3ToCam(p, B));
+    const poly = v3ClipNear(cam);
+    if (poly.length < 3) continue;
+    let zSum = 0, ySum = 0;
+    for (const c of cam) zSum += c.z;
     for (const p of q.p) ySum += p.y;
-    lit.push({ ps, depth: depth/4, yAvg: ySum/4, c: q.c, wp: q.p });
+    lit.push({ poly, depth: zSum / cam.length, yAvg: ySum / q.p.length, c: q.c, wp: q.p });
   }
   lit.sort((a, b) => b.depth - a.depth);
   for (const q of lit){
@@ -884,18 +922,22 @@ function drawView3D(){
         ? [c[0]+t*(255-c[0])*0.55, c[1]*(1-t*0.35), c[2]*(1-t*0.6)]
         : [c[0]*(1-t*0.3), c[1]+(-t)*(200-c[1])*0.3, c[2]+(-t)*(255-c[2])*0.5];
     }
-    // 光照:四边形对角线叉积取面法线
-    const A = q.wp[0], C2 = q.wp[2], Bd = q.wp[1];
-    const nx = (C2.y-A.y)*(Bd.z-A.z) - (C2.z-A.z)*(Bd.y-A.y);
-    const ny = (C2.z-A.z)*(Bd.x-A.x) - (C2.x-A.x)*(Bd.z-A.z);
-    const nz = (C2.x-A.x)*(Bd.y-A.y) - (C2.y-A.y)*(Bd.x-A.x);
+    // 光照:前三顶点叉积取面法线(三角形/四边形通用)
+    const A = q.wp[0], Bd = q.wp[1], C2 = q.wp[2];
+    const nx = (Bd.y-A.y)*(C2.z-A.z) - (Bd.z-A.z)*(C2.y-A.y);
+    const ny = (Bd.z-A.z)*(C2.x-A.x) - (Bd.x-A.x)*(C2.z-A.z);
+    const nz = (Bd.x-A.x)*(C2.y-A.y) - (Bd.y-A.y)*(C2.x-A.x);
     const nl = Math.hypot(nx, ny, nz) || 1;
     const d = Math.abs((nx*V3_LIGHT.x + ny*V3_LIGHT.y + nz*V3_LIGHT.z) / nl);
     const s = 0.58 + 0.42*d;
     ctx.fillStyle = `rgb(${Math.min(255,c[0]*s)|0},${Math.min(255,c[1]*s)|0},${Math.min(255,c[2]*s)|0})`;
     ctx.beginPath();
-    ctx.moveTo(q.ps[0][0], q.ps[0][1]);
-    for (let k = 1; k < 4; k++) ctx.lineTo(q.ps[k][0], q.ps[k][1]);
+    const first = v3ProjCam(q.poly[0], B);
+    ctx.moveTo(first[0], first[1]);
+    for (let k = 1; k < q.poly.length; k++){
+      const pt = v3ProjCam(q.poly[k], B);
+      ctx.lineTo(pt[0], pt[1]);
+    }
     ctx.closePath(); ctx.fill();
   }
 
@@ -931,9 +973,31 @@ function drawView3D(){
     }
   }
 
-  // 视角信息角标
+  // 视角信息角标 + 朝向罗盘(右下角:绿 = 起点前进方向 -Z,红 = 世界 +X,随视角旋转)
   ctx.fillStyle = "rgba(190,205,225,0.55)"; ctx.font = "11px sans-serif";
   ctx.fillText(`3D 预览  框高 ${v3.cy.toFixed(1)}m  距离 ${v3.dist.toFixed(0)}m  (双击复位)`, 10, H-10);
+  const gR = 24, gx = W - 48, gy = H - 44;
+  ctx.strokeStyle = "rgba(190,205,225,0.35)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(gx, gy, gR, 0, Math.PI*2); ctx.stroke();
+  const drawDir = (v, col, label) => {
+    const sx = v.x*B.rx + v.y*B.ry + v.z*B.rz;
+    const sy = v.x*B.ux + v.y*B.uy + v.z*B.uz;
+    const L = Math.hypot(sx, sy) || 1;
+    const ex = gx + sx/L * (gR - 3), ey = gy - sy/L * (gR - 3);
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(ex, ey); ctx.stroke();
+    const a = Math.atan2(ey - gy, ex - gx);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - 7*Math.cos(a - 0.45), ey - 7*Math.sin(a - 0.45));
+    ctx.lineTo(ex - 7*Math.cos(a + 0.45), ey - 7*Math.sin(a + 0.45));
+    ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+    ctx.fillStyle = col;
+    ctx.fillText(label, ex + 9*Math.cos(a) - 10, ey + 9*Math.sin(a) + 4);
+  };
+  ctx.font = "bold 11px sans-serif";
+  drawDir({ x: 0, y: 0, z: -1 }, "#54d06a", "前-Z");
+  drawDir({ x: 1, y: 0, z: 0 }, "#e07060", "+X");
 }
 
 /* =====================================================================
@@ -1224,7 +1288,7 @@ view.addEventListener("mousemove", e => {
       v3Drag.sx = sx; v3Drag.sy = sy;
       if (v3Drag.mode === "orbit"){
         v3.yaw += dx * 0.008;
-        v3.pitch = Math.max(0.12, Math.min(1.52, v3.pitch + dy * 0.008));
+        v3.pitch = Math.max(-1.35, Math.min(1.55, v3.pitch + dy * 0.008));
       } else {
         // 沿相机右/上向量平移目标点(屏幕像素 × 距离系数)
         const B = v3Basis(view.clientWidth, view.clientHeight);
@@ -1266,7 +1330,7 @@ view.addEventListener("dblclick", () => { if (viewMode === "3d"){ v3.fit = false
 view.addEventListener("wheel", e => {
   e.preventDefault();
   if (viewMode === "3d"){
-    v3.dist = Math.max(25, Math.min(8000, v3.dist * (e.deltaY < 0 ? 1/1.15 : 1.15)));
+    v3.dist = Math.max(12, Math.min(8000, v3.dist * (e.deltaY < 0 ? 1/1.15 : 1.15)));
     drawView();
     return;
   }
