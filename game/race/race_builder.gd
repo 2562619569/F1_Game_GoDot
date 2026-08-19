@@ -248,7 +248,7 @@ static func _spawn_npcs(race: RaceManager, track: Node3D, track_data: TrackData,
 	for i in count:
 		var def: Dictionary = NPC_TYPES[_roll_npc_type(weights)]
 		var spot := _npc_spot(track, track_data, i, count)
-		_make_npc(race, track_data, int(def.car_id), String(def.route), spot, hp, speed_scale, loot_cb)
+		_make_npc(race, track_data, i, int(def.car_id), String(def.route), spot, hp, speed_scale, loot_cb)
 
 ## 每回合 NPC 密度：[npc_count_min, npc_count] 均匀随机（min 夹到 [0, max]）
 static func _roll_npc_count() -> int:
@@ -271,12 +271,15 @@ static func _roll_npc_type(weights: Array) -> int:
 			return i
 	return NPC_TYPES.size() - 1
 
-## NPC 出生点：有赛道数据 = 主路弧长 [0.2L, 0.92L] 均匀取点 + 横向随机车道，
-## 车头朝路线切线；兜底直线图复用主路 loot 点（贴地、朝 -z）
+## NPC 出生点：有赛道数据 = 主路尽量铺满：弧长 [max(发车区外净距, 8%L), 95%L]
+## 均匀取点 + 横向随机车道，车头朝路线切线；兜底直线图复用主路 loot 点（贴地、朝 -z）
+const NPC_SPAWN_MIN_S := 60.0  # 发车引道外净距（anchor_s≤36 + 网格纵深余量）
+
 static func _npc_spot(track: Node3D, track_data: TrackData, i: int, count: int) -> Dictionary:
 	if track_data != null:
 		var t := (float(i) + 0.5) / float(count)
-		var s := lerpf(track_data.length * 0.2, track_data.length * 0.92, t)
+		var s := lerpf(maxf(track_data.length * 0.08, NPC_SPAWN_MIN_S),
+				track_data.length * 0.95, t)
 		var lane := randf_range(-0.3, 0.3) * track_data.width_at(s)
 		var pos: Vector3 = track_data.point_at(s) + track_data.normal_at(s) * lane
 		var tang: Vector3 = track_data.point_at(s + 2.0) - track_data.point_at(maxf(s - 2.0, 0.0))
@@ -288,9 +291,11 @@ static func _npc_spot(track: Node3D, track_data: TrackData, i: int, count: int) 
 ## NPC 单车装配：与 _make_racer 同款物理/视觉/冲击链路，差异：
 ## - 挂 CarHealth（可被撞损，CollisionKick 按接近速度结算伤害）；
 ## - Driver 换 npc_car.gd（慢速巡航 + 撞爆按类型掉落），不建 Racer（不排名不解冻依赖）
-static func _make_npc(race: RaceManager, track_data: TrackData, cid: int, drop_route: String, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
+static func _make_npc(race: RaceManager, track_data: TrackData, idx: int, cid: int, drop_route: String, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
 	var root := Node3D.new()
-	root.name = "NPC-%d" % cid
+	# 名字带序号保证唯一：同类型多台时重名节点会被 add_child 换成 @Node3D@xx
+	# 自动名（force_readable_name=false 默认行为），按前缀找车会漏数
+	root.name = "NPC%02d-%d" % [idx + 1, cid]
 	var v: Vehicle = CAR_SCENE.instantiate()
 	root.position = spot.pos
 	root.rotation.y = spot.yaw

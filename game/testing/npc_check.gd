@@ -52,6 +52,7 @@ func _ready() -> void:
 	_check_tables()
 	_check_health_unit()
 	_check_type_rolls()
+	_check_spawn_layout()
 	await _check_collision_damage()
 	await _check_destroy_chain()
 	var pass_ := failures == 0
@@ -174,6 +175,45 @@ func _hi_share(lw: Dictionary, route: String) -> float:
 	for x in w:
 		total += float(x)
 	return (float(w[2]) + float(w[3])) / total if total > 0.0 else -1.0
+
+# ---------------- 1c. 全赛道分布与生成数量（真实地图 + 整场装配） ----------------
+
+## 分布铺满主路（首台越过发车区且不深藏、尾台不越线、跨度够大）+ 整场装配数量落在密度区间
+func _check_spawn_layout() -> void:
+	var path := "res://game/race/tracks/data/map_1.json"
+	if not FileAccess.file_exists(path):
+		ok(false, "map_1.json 存在（分布断言依赖真实赛道）")
+		return
+	var data := TrackData.load_json(path)
+	var hi := int(Match.game_cfg("npc_count"))
+	var lo := int(Match.game_cfg("npc_count_min"))
+	var n := randi_range(lo, hi)
+	var s_min := INF
+	var s_max := -INF
+	for i in n:
+		var spot: Dictionary = RaceBuilder._npc_spot(null, data, i, n)
+		var idx: int = data.nearest_index(spot.pos, 0)
+		var s: float = data.main["s_arr"][idx]
+		s_min = minf(s_min, s)
+		s_max = maxf(s_max, s)
+	ok(s_min >= RaceBuilder.NPC_SPAWN_MIN_S - 1.0, "首台越过发车区净距",
+			"s=%.0f ≥ %.0f" % [s_min, RaceBuilder.NPC_SPAWN_MIN_S])
+	ok(s_min <= data.length * 0.15, "首台不深藏（≤15%L）", "s=%.0f L=%.0f" % [s_min, data.length])
+	ok(s_max <= data.length * 0.96, "尾台不越过 95%L", "s=%.0f L=%.0f" % [s_max, data.length])
+	ok(s_max - s_min >= data.length * 0.7, "分布铺满赛道主干（跨度≥70%L）",
+			"span=%.0f L=%.0f" % [s_max - s_min, data.length])
+
+	# 整场装配：真实 build 链路的生成数量落在随机密度区间
+	var race := RaceManager.new()
+	add_child(race)
+	race.setup(1)
+	var cnt := 0
+	for c in race.get_children():
+		if c.name.begins_with("NPC"):
+			cnt += 1
+	ok(cnt >= lo and cnt <= hi, "整场装配 NPC 数量在密度区间",
+			"%d ∈ [%d, %d]" % [cnt, lo, hi])
+	race.free()
 
 # ---------------- 2. CarHealth 单元 ----------------
 
