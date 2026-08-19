@@ -37,6 +37,7 @@ const DEFAULT_BRAKE_FRONT := "front_v1"
 const DEFAULT_BRAKE_REAR := "rear_v1"
 
 const _BodyAttitude := preload("res://game/car/body_attitude.gd")
+const _BodyRattle := preload("res://game/car/body_rattle.gd")
 const _BrakeLight := preload("res://game/car/brake_light.gd")
 const _MaterialPresets := preload("res://game/car/material_presets.gd")
 const _WheelMaterials := preload("res://game/car/wheel_materials.gd")
@@ -95,9 +96,13 @@ static func attach(v: Vehicle, body_id: String, hub_id: String, tire_id: String,
 	var body_pivot: Node3D = _BodyAttitude.new()
 	body_pivot.name = "BodyPivot"
 	v.add_child(body_pivot)
+	# 再套一层砂石微抖（纯表现）：只抖车壳，碰撞体/悬挂射线不在本链下
+	var body_rattle: Node3D = _BodyRattle.new()
+	body_rattle.name = "BodyRattle"
+	body_pivot.add_child(body_rattle)
 	var body_visual: Node3D = load(body_path).instantiate()
 	body_visual.name = "BodyVisual"
-	body_pivot.add_child(body_visual)
+	body_rattle.add_child(body_visual)
 
 	# 刹车灯：body.json 的 materials.brake_light 按材质名点亮（未标记则自动跳过；
 	# headlight / body 标记暂只存元数据，后续做车灯/车漆逻辑时消费）

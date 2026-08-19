@@ -14,7 +14,10 @@ extends SceneTree
 ## 7. 环视：orbit_look 侧向甩头后相机横移到车身侧，松手指数回正归零；
 ## 8. 持续震动源：巡航(20 m/s)三源全零；高速/重刹/侧滑三路各有正确主轴，
 ##    且缓入后的强度写入 Brownian 幅度、哑元上产生实际偏移；
-## 9. 震动总开关：shake_enabled=false 时持续源幅度归零、impact_kick 被忽略。
+## 9. 震动总开关：shake_enabled=false 时持续源幅度归零、impact_kick 被忽略；
+## 10. 砂石持续源：按车轮压砂石占比×车速渐变（低速起颠、10 m/s 满幅），
+##     半边轮上路肩强度减半；主竖直颠+俯仰、z 向不抖；关总开关幅度归零；
+##     无 axle 目标（探针原形态）安全回零。
 ## 目标用冻结刚体（可设 linear_velocity/steering/brake_input/local_velocity），
 ## physics_frame 回调晚于相机 _physics_process，故用 call_deferred 对齐
 ## "刚体先动、相机后读"的真实时序。探针无视觉网格，刚性锚点走回退车盒。
@@ -38,15 +41,24 @@ var max_roll_step := 0.0
 var max_fwd_step := 0.0
 var _kick_dir := Vector3.ZERO
 var _kick_peak := 0.0
+var _wheel_script: GDScript   # 假轮：只有 surface_type，喂砂石源用
+var _axle_script: GDScript   # 假轴：只有 wheels 数组
+var _fake_wheels: Array = []
 
 func _init() -> void:
 	delta_p = 1.0 / float(Engine.physics_ticks_per_second)
 	target = RigidBody3D.new()
 	target.freeze = true   # 冻结：位置/朝向由探针驱动，linear_velocity 手填
-	var ts := GDScript.new()   # 挂 steering/brake_input/local_velocity 驱动侧倾与震动源
-	ts.source_code = "extends RigidBody3D\nvar steering := 0.0\nvar brake_input := 0.0\nvar local_velocity := Vector3.ZERO\n"
+	var ts := GDScript.new()   # 挂 steering/brake_input/local_velocity/axle 驱动侧倾与震动源
+	ts.source_code = "extends RigidBody3D\nvar steering := 0.0\nvar brake_input := 0.0\nvar local_velocity := Vector3.ZERO\nvar front_axle = null\nvar rear_axle = null\n"
 	ts.reload()
 	target.set_script(ts)
+	_wheel_script = GDScript.new()
+	_wheel_script.source_code = "extends RefCounted\nvar surface_type := \"Road\"\n"
+	_wheel_script.reload()
+	_axle_script = GDScript.new()
+	_axle_script.source_code = "extends RefCounted\nvar wheels: Array = []\n"
+	_axle_script.reload()
 	root.add_child(target)
 	cam = load("res://game/race/smooth_chase_camera.gd").new()
 	cam.follow_this = target
@@ -80,7 +92,16 @@ func cam_view_dir() -> Vector3:
 
 func _on_phys() -> void:
 	# ---- 阶段编排 ----
-	_v_speed = 45.0 if tick >= 945 else (40.0 if tick >= 252 and tick < 380 else 20.0)
+	if tick >= 998 and tick < 1000:
+		_v_speed = 1.5   # 砂石起颠阈值之下
+	elif tick >= 996 and tick < 998:
+		_v_speed = 5.0   # 砂石低速渐变段
+	elif tick >= 945 and tick < 972:
+		_v_speed = 45.0
+	elif tick >= 252 and tick < 380:
+		_v_speed = 40.0
+	else:
+		_v_speed = 20.0
 	_yaw_rate = 2.5 if tick >= 460 and tick < 520 else 0.0
 	_steer = 1.0 if tick >= 400 and tick < 430 else 0.0
 	_move.call_deferred()
@@ -261,11 +282,73 @@ func _on_phys() -> void:
 		target.brake_input = 0.0
 		target.local_velocity = Vector3.ZERO
 
-	if tick == 970:
+	# ---- 11. 砂石持续震动源（巡航 20 m/s：三路经典源全零，只剩砂石独立生效）----
+	if tick == 975:
+		_attach_fake_wheels(["Road", "Road", "Road", "Road"])
+		ok(cam._gravel_wheel_weight() == 0.0, "all-road wheels: gravel weight 0")
+		ok(cam._gravel_shake_level() == 0.0, "all-road wheels: gravel level 0")
+	if tick == 980:
+		for i in range(4):
+			_fake_wheels[i].surface_type = "Gravel" if i < 2 else "Road"
+		ok(cam._gravel_wheel_weight() == 0.5, "two wheels on gravel shoulder: weight 0.5")
+		ok(is_equal_approx(cam._gravel_shake_level(), 0.005),
+				"half wheels at 20 m/s: level ≈ 0.005 (%.4f)" % cam._gravel_shake_level())
+	if tick == 992:
+		# 12 tick（物理 120 Hz，attack 12/s → 约 70% 缓入）后幅度接近稳态 0.007
+		var gpos: Vector3 = cam._gravel_pos.amplitude
+		var grot: Vector3 = cam._gravel_rot.amplitude
+		ok(gpos.y > 0.004 and gpos.y < 0.0075 and gpos.y > gpos.x and is_zero_approx(gpos.z),
+				"gravel rumble favors vertical motion, no z (%s)" % gpos)
+		ok(grot.x > grot.z and grot.x > grot.y,
+				"gravel rumble favors pitch (%s)" % grot)
+		ok(cam._continuous_shake_intensity() == 0.0 and cam._shake_target.position.length() > 1e-6,
+				"gravel alone shakes at cruise 20 m/s where classic sources idle (%.4f m)" % cam._shake_target.position.length())
+		for i in range(4):
+			_fake_wheels[i].surface_type = "Gravel"
+	if tick == 995:
+		ok(cam._gravel_wheel_weight() == 1.0, "fully on gravel: weight 1")
+		ok(is_equal_approx(cam._gravel_shake_level(), 0.010),
+				"full gravel at 20 m/s: level ≈ 0.010 (%.4f)" % cam._gravel_shake_level())
+	# 996-998 车速 5 m/s、998-1000 车速 1.5 m/s（编排见阶段表）
+	if tick == 997:
+		ok(is_equal_approx(cam._gravel_shake_level(), 0.00375),
+				"low speed 5 m/s: gravel eases to ≈0.00375 (%.4f)" % cam._gravel_shake_level())
+	if tick == 999:
+		ok(cam._gravel_shake_level() == 0.0,
+				"below onset 1.5 m/s: gravel silent (parked on gravel doesn't shake)")
+	if tick == 1000:
+		target.front_axle = null
+		target.rear_axle = null
+	if tick == 1002:
+		ok(cam._gravel_wheel_weight() == 0.0 and cam._gravel_shake_level() == 0.0,
+				"target without axles: gravel source safely zero")
+		_attach_fake_wheels(["Gravel", "Gravel", "Gravel", "Gravel"])
+		cam.shake_enabled = false
+	if tick == 1005:
+		ok(cam._gravel_level == 0.0 and cam._gravel_pos.amplitude == Vector3.ZERO,
+				"shake off: gravel amplitudes hard zero (%s)" % cam._gravel_pos.amplitude)
+		cam.shake_enabled = true
+
+	if tick == 1010:
 		print("========== CAMERA CHECK: %d checks, %d failures ==========" % [checks, failures])
 		quit(1 if failures > 0 else 0)
 
 	tick += 1
+
+## 给探针目标挂 4 个假轮（只有 surface_type，相机鸭子类型读取），
+## 模拟整车压砂石/骑路肩等轮位组合。
+func _attach_fake_wheels(surfaces: Array) -> void:
+	_fake_wheels.clear()
+	for s in surfaces:
+		var w: RefCounted = _wheel_script.new()
+		w.surface_type = String(s)
+		_fake_wheels.append(w)
+	var front: RefCounted = _axle_script.new()
+	front.wheels = [_fake_wheels[0], _fake_wheels[1]]
+	var rear: RefCounted = _axle_script.new()
+	rear.wheels = [_fake_wheels[2], _fake_wheels[3]]
+	target.front_axle = front
+	target.rear_axle = rear
 
 func _move() -> void:
 	if _yaw_rate != 0.0:

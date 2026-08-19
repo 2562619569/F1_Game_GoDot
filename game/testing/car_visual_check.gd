@@ -79,7 +79,7 @@ func _ready() -> void:
 	v2.brake_input = 1.0
 	await get_tree().create_timer(0.8).timeout
 	# 刹车灯逻辑校验（headless 也可验证）：brake_amount 已爬满，自发光应接近满刹车亮度
-	var bl := v2.get_node_or_null("BodyPivot/BodyVisual/BrakeLight") as BrakeLight
+	var bl := v2.get_node_or_null("BodyPivot/BodyRattle/BodyVisual/BrakeLight") as BrakeLight
 	print("[CHECK] brake_light=%s" % (bl.debug_info() if bl else "缺失"))
 	await snap(cam, Vector3(8.4, 1.0, 3.0), Vector3(6.0, 0.55, 0.2), "car_brake_on.png")
 	get_tree().quit()

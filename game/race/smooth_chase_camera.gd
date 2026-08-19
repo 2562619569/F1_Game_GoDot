@@ -11,7 +11,7 @@ extends "res://addons/pro_vehicle_camera/pro_vehicle_camera.gd"
 ##    松手指数回正；追尾模式旋转牵引方向（上游 orbit_yaw/orbit_pitch 钩子），
 ##    刚性模式直接旋转视线。
 ## 4. 震动走原版 Shaker 插件（addons/shaker，MIT，未改上游一行）：持续微震
-##    （高速路面/重刹/漂移侧滑）= 组件常驻 Brownian 随机游走 preset；碰撞
+##    （高速路面/重刹/漂移侧滑/砂石路面）= 组件常驻 Brownian 随机游走 preset；碰撞
 ##    脉冲 = impact_kick 方向性曲线甩动 + 白噪声旋转混乱。相机每物理帧被
 ##    PVC/刚性锚定全量重写 transform，直接以相机为抖动目标会冲掉组件的
 ##    "撤销上次偏移+叠加新偏移"差分机制，故组件 custom_target 指向哑元
@@ -40,6 +40,9 @@ extends "res://addons/pro_vehicle_camera/pro_vehicle_camera.gd"
 @export var shake_speed_gain := 0.004
 @export var shake_brake_gain := 0.006
 @export var shake_drift_gain := 0.008
+## 砂石路：不问车速门槛、低速就颠，是最强的一路持续源（按车轮压砂石占比 ×
+## 车速渐变，骑上路肩半边轮只有一半强度）。
+@export var shake_gravel_gain := 0.010
 ## 持续源缓入快、缓出慢，避免踩刹车/结束漂移时震动硬切。
 @export var shake_attack := 12.0
 @export var shake_release := 5.0
@@ -68,11 +71,16 @@ const HOOD_BACK_RATIO := 0.30
 const RIGID_BUMPER_FORWARD := 0.10
 ## 无视觉网格（headless 探针等）时的近似车盒：中心对齐原点、贴地。
 const RIGID_FALLBACK_SIZE := Vector3(1.9, 1.2, 4.4)
-## 持续震动起震阈值：车速 28 m/s 起路面渐入；重刹要求 12 m/s 以上；侧滑 3 m/s 起。
+## 持续震动起震阈值：车速 28 m/s 起路面渐入；重刹要求 12 m/s 以上；侧滑 3 m/s 起；
+## 砂石 2 m/s 起颠、10 m/s 到满幅（停在路上不抖，低速碾过也有感）。
 const SHAKE_SPEED_ONSET := 28.0
 const SHAKE_BRAKE_SPEED := 12.0
 const SHAKE_DRIFT_SPEED := 8.0
 const SHAKE_DRIFT_SLIP := 3.0
+const SHAKE_GRAVEL_ONSET := 2.0
+const SHAKE_GRAVEL_FULL := 10.0
+## 砂石表面组名（track_builder 铺砂石路肩时加的 collision group，同 wheel 表面字典键）。
+const GRAVEL_SURFACE := "Gravel"
 const STICK_DEADZONE := 0.15
 
 var _prev_basis := Basis.IDENTITY
@@ -90,6 +98,9 @@ var _shake_target: Node3D = null   # 哑元：本地 transform 只被 Shaker 写
 var _rumble_pos: ShakerTypeBrownianShake3D = null   # 持续微震两路游走，幅度由物理帧实时写
 var _rumble_rot: ShakerTypeBrownianShake3D = null
 var _rumble_levels := Vector3.ZERO   # x=高速路感，y=制动，z=漂移（均为米量级）
+var _gravel_pos: ShakerTypeBrownianShake3D = null   # 砂石两路：更高 roughness 才有粗粝颠簸
+var _gravel_rot: ShakerTypeBrownianShake3D = null
+var _gravel_level := 0.0   # 砂石源强度（米量级），同样走缓入缓出
 
 func _ready() -> void:
 	super()
@@ -242,9 +253,19 @@ func _build_shaker() -> void:
 	_rumble_rot.roughness = Vector3(0.4, 0.3, 0.5)
 	_rumble_rot.persistence = Vector3.ONE * 0.95
 	_rumble_rot.amplitude = Vector3.ZERO
+	# 砂石路面是高频粗粝颠簸，与高速路感的顺滑游走性格不同：独立一对通道，
+	# roughness 加大、persistence 收低（步子大、忘得快 = 更"咯咯楞楞"）。
+	_gravel_pos = ShakerTypeBrownianShake3D.new()
+	_gravel_pos.roughness = Vector3(1.2, 1.5, 1.0)
+	_gravel_pos.persistence = Vector3.ONE * 0.82
+	_gravel_pos.amplitude = Vector3.ZERO
+	_gravel_rot = ShakerTypeBrownianShake3D.new()
+	_gravel_rot.roughness = Vector3(0.9, 0.6, 1.1)
+	_gravel_rot.persistence = Vector3.ONE * 0.86
+	_gravel_rot.amplitude = Vector3.ZERO
 	var preset := ShakerPreset3D.new()
-	preset.PositionShake = [_rumble_pos]
-	preset.RotationShake = [_rumble_rot]
+	preset.PositionShake = [_rumble_pos, _gravel_pos]
+	preset.RotationShake = [_rumble_rot, _gravel_rot]
 	_shaker.shakerPreset = preset
 	add_child(_shaker)
 	_shaker.play_shake()
@@ -313,6 +334,44 @@ func _continuous_shake_intensity() -> float:
 	var sources := _continuous_shake_sources()
 	return sources.x + sources.y + sources.z
 
+## 压在砂石上的车轮占比（0..1）：前/后轴车轮逐个读 surface_type（wheel 按碰撞体
+## 所在表面组实时刷新）；无 axle 结构的探针目标安全返回 0。骑砂石路肩只压到
+## 半边轮，就只给一半强度。
+func _gravel_wheel_weight() -> float:
+	var v := follow_this
+	if v == null or not ("front_axle" in v and "rear_axle" in v):
+		return 0.0
+	var total := 0
+	var on_gravel := 0
+	for axle in [v.front_axle, v.rear_axle]:
+		if axle == null:
+			continue
+		for wheel in axle.wheels:
+			total += 1
+			if String(wheel.surface_type) == GRAVEL_SURFACE:
+				on_gravel += 1
+	return float(on_gravel) / float(total) if total > 0 else 0.0
+
+## 砂石源强度（纯函数，自检用）：gain × 车轮占比 × 车速渐变，2 m/s 起颠、
+## 10 m/s 满幅——砂石不像高速路感要等 28 m/s，低速碾过就有感。
+func _gravel_shake_level() -> float:
+	var weight := _gravel_wheel_weight()
+	if weight <= 0.0:
+		return 0.0
+	var spd := _car_speed()
+	if spd <= SHAKE_GRAVEL_ONSET:
+		return 0.0
+	var speed_factor := clampf((spd - SHAKE_GRAVEL_ONSET) / (SHAKE_GRAVEL_FULL - SHAKE_GRAVEL_ONSET), 0.0, 1.0)
+	return shake_gravel_gain * weight * speed_factor
+
+func _gravel_position_amplitude(level: float) -> Vector3:
+	# 竖直颠为主、带点横向晃；z 同样不抖（近贴视角下前后抖会拍出车头闪动）。
+	return Vector3(0.6, 1.4, 0.0) * level
+
+func _gravel_rotation_amplitude(level: float) -> Vector3:
+	# 主俯仰（点头颠）、次滚转、轻微偏航。
+	return Vector3(0.45, 0.10, 0.28) * level
+
 func _rumble_position_amplitude(levels: Vector3) -> Vector3:
 	# 路面以纵向细碎跳动为主，制动抖在竖直方向，漂移集中于横向。
 	return Vector3(levels.x * 0.25 + levels.y * 0.12 + levels.z,
@@ -325,25 +384,35 @@ func _rumble_rotation_amplitude(levels: Vector3) -> Vector3:
 			levels.x * 0.04 + levels.z * 0.34)
 
 ## 物理帧末尾：持续源强度写入两路 Brownian 的幅度（x/y 抖、z 不抖——
-## 近贴车身/保险杠视角下前后抖会拍出车头闪动，旧版同款约定），再把哑元
-## 上累积的震动偏移/旋转叠到相机全局位姿——PVC 牵引/刚性锚定先写基准，
-## 震动只做叠加，与旧 _apply_continuous_shake 同一注入槽位。
+## 近贴车身/保险杠视角下前后抖会拍出车头闪动，旧版同款约定），砂石源同法
+## 写入自己的通道，再把哑元上累积的震动偏移/旋转叠到相机全局位姿——
+## PVC 牵引/刚性锚定先写基准，震动只做叠加，与旧 _apply_continuous_shake
+## 同一注入槽位。
 func _apply_shake(delta: float) -> void:
 	if _shaker == null:
 		return
 	var target_levels := _continuous_shake_sources() if shake_enabled else Vector3.ZERO
+	var gravel_target := _gravel_shake_level() if shake_enabled else 0.0
 	if not shake_enabled:
 		_rumble_levels = Vector3.ZERO
+		_gravel_level = 0.0
 	else:
 		_rumble_levels.x = _smooth_rumble(_rumble_levels.x, target_levels.x, delta)
 		_rumble_levels.y = _smooth_rumble(_rumble_levels.y, target_levels.y, delta)
 		_rumble_levels.z = _smooth_rumble(_rumble_levels.z, target_levels.z, delta)
+		_gravel_level = _smooth_rumble(_gravel_level, gravel_target, delta)
 	var pos_amplitude := _rumble_position_amplitude(_rumble_levels)
 	var rot_amplitude := _rumble_rotation_amplitude(_rumble_levels)
 	if not _rumble_pos.amplitude.is_equal_approx(pos_amplitude):
 		_rumble_pos.amplitude = pos_amplitude
 	if not _rumble_rot.amplitude.is_equal_approx(rot_amplitude):
 		_rumble_rot.amplitude = rot_amplitude
+	var gravel_pos_amplitude := _gravel_position_amplitude(_gravel_level)
+	var gravel_rot_amplitude := _gravel_rotation_amplitude(_gravel_level)
+	if not _gravel_pos.amplitude.is_equal_approx(gravel_pos_amplitude):
+		_gravel_pos.amplitude = gravel_pos_amplitude
+	if not _gravel_rot.amplitude.is_equal_approx(gravel_rot_amplitude):
+		_gravel_rot.amplitude = gravel_rot_amplitude
 	global_position += global_transform.basis * _shake_target.position
 	var r := _shake_target.rotation
 	if r != Vector3.ZERO:
