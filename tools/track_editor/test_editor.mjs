@@ -145,6 +145,12 @@ view.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 
 view.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
 await new Promise(r => setTimeout(r, 100));
 ok(mainRoute().points.length === ptsBefore3d, "3D 模式画布点击不加点(纯查看,编辑回 2D)");
+// 视角残留修复:拖到仰角后切走再切回 3D,恢复默认俯角而非残留仰视
+window.eval("v3.pitch = -1.2");
+window.eval("setViewMode('2d')");
+window.eval("setViewMode('3d')");
+const p3 = window.eval("v3.pitch");
+ok(Math.abs(p3 - 0.95) < 1e-9, "重新进入 3D 恢复默认俯角(" + p3.toFixed(2) + " rad,不残留仰视)");
 window.eval("setViewMode('2d')");
 ok(window.eval("viewMode") === "2d" && $("vm2d").classList.contains("on"), "切回 2D 编辑模式并高亮 2D");
 

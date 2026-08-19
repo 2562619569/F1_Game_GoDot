@@ -722,7 +722,8 @@ function setViewMode(m){
   drawView();
 }
 
-/** 全路由包围盒 → 相机目标与距离(进 3D / 双击复位时调用) */
+/** 全路由包围盒 → 相机目标与距离,并恢复默认俯视角度
+ *  (进入 3D / 双击复位时调用;角度不残留上次的低角度/仰视) */
 function v3Fit(){
   let x0=1e9, x1=-1e9, y0=1e9, y1=-1e9, z0=1e9, z1=-1e9;
   for (const r of S.routes){
@@ -737,6 +738,7 @@ function v3Fit(){
   if (x0 > x1) return false;
   v3.cx = (x0+x1)/2; v3.cy = (y0+y1)/2; v3.cz = (z0+z1)/2;
   v3.dist = Math.max(60, Math.hypot(x1-x0, (y1-y0)*2, z1-z0) * 1.15);
+  v3.yaw = -2.4; v3.pitch = 0.95;   // 默认 54° 俯角,赛道顶视斜角
   return true;
 }
 
