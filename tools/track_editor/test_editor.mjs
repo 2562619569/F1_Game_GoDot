@@ -46,7 +46,17 @@ const statsText = () => ($("stats").textContent || "").trim();
 
 // ---- 1. 初始加载 ----
 ok(statsText().includes("574"), "初始统计:总长 574m(含 36m 发车引道/8 格)(" + statsText() + ")");
-ok($("hint").textContent.includes("选择/拖动"), "默认 select 工具提示");
+ok(window.eval("viewMode") === "3d", "主视图默认 3D 显示");
+ok($("vm3d").classList.contains("on") && !$("vm2d").classList.contains("on"),
+    "左上角 2D/3D 切换按钮初始高亮 3D");
+$("vm2d").dispatchEvent(new window.Event("click", { bubbles: true }));
+ok(window.eval("viewMode") === "2d", "左上角 2D 按钮切回俯视编辑");
+ok($("hint").textContent.includes("选择/拖动"), "2D 模式显示 select 工具提示");
+
+// ---- 1b. 地图文件区:读取按钮移除,列表选择即读取 ----
+ok(!$("pMapLoad"), "「读取」按钮已移除(列表选择即读取)");
+ok(typeof window.eval("saveMapTo") === "function", "切换前自动保存辅助 saveMapTo 存在");
+ok(window.eval("docBaseline") === JSON.stringify(window.eval("S")), "初始文档未修改(脏检测基线 = 当前状态)");
 
 // ---- 2. 工具切换(点击按钮) ----
 const addBtn = [...document.querySelectorAll("#topbar .tbtn[data-tool]")].find(b => b.dataset.tool === "add");
@@ -108,6 +118,33 @@ pw.value = "30";
 pw.dispatchEvent(new window.Event("input", { bubbles: true }));
 await new Promise(r => setTimeout(r, 600));
 ok(Math.abs(window.eval("S.width_default") - 30) < 0.01, "默认宽度输入联动");
+
+// ---- 8b. 砂石路宽全局设置(独立于护栏退距) ----
+ok(Math.abs(window.eval("S.options.gravel_width") - 8) < 1e-9, "默认砂石路宽 8m(与护栏退距同为默认值)");
+const pgr = $("pOg");
+ok(!!pgr, "面板含砂石路宽输入框");
+pgr.value = "5";
+pgr.dispatchEvent(new window.Event("input", { bubbles: true }));
+await new Promise(r => setTimeout(r, 100));
+ok(Math.abs(window.eval("S.options.gravel_width") - 5) < 1e-9, "砂石路宽输入联动 S.options.gravel_width");
+const expw = window.eval("buildExport()");
+ok(Math.abs(expw.options.gravel_width - 5) < 1e-9 && Math.abs(expw.options.barrier_offset - 8) < 1e-9,
+    "导出含独立 gravel_width=" + expw.options.gravel_width + " / barrier_offset=" + expw.options.barrier_offset);
+
+// ---- 8c. 3D 预览模式(左上角切换) ----
+$("vm3d").dispatchEvent(new window.Event("click", { bubbles: true }));
+ok(window.eval("viewMode") === "3d" && $("vm3d").classList.contains("on"), "左上角 3D 按钮进入 3D 视图并高亮");
+let drew3d = false;
+try { window.eval("drawView()"); drew3d = true; } catch (e) { console.log("3D 渲染异常: " + e); }
+ok(drew3d, "3D 软件渲染管线不抛错");
+ok(window.eval("v3Gather().length") > 100, "3D 几何四边形收集 " + window.eval("v3Gather().length") + " 个(路面/砂石/护栏)");
+const ptsBefore3d = mainRoute().points.length;
+view.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 500, clientY: 400, button: 0 }));
+view.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+await new Promise(r => setTimeout(r, 100));
+ok(mainRoute().points.length === ptsBefore3d, "3D 模式画布点击不加点(纯查看,编辑回 2D)");
+window.eval("setViewMode('2d')");
+ok(window.eval("viewMode") === "2d" && $("vm2d").classList.contains("on"), "切回 2D 编辑模式并高亮 2D");
 
 // ---- 9. 完赛预估(速度剖面法) ----
 const estInfo1 = ($("estInfo").textContent || "").trim();

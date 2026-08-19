@@ -10,7 +10,7 @@ const LOOKAHEAD_VSHIFT := 0.55  # AI 前瞻时间(秒)对应距离系数
 
 var meta := {"id": 0, "name": ""}
 var grid_cfg := {"count": 8, "row_gap": 8.0, "col_gap": 7.0, "first_row_offset": 6.0}
-var options := {"walls": true, "wall_height": 0.8, "barrier_offset": 8.0, "sample_step": 2}
+var options := {"walls": true, "wall_height": 0.8, "barrier_offset": 8.0, "gravel_width": 8.0, "sample_step": 2}
 var routes: Array = []   # [{id, surface, pts, tans, widths, s_arr, radii}]
 var main: Dictionary = {}
 var length := 0.0

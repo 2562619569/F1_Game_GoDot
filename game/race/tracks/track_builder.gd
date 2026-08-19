@@ -59,8 +59,14 @@ const ROAD_INNER_RADIUS := 3.0     # 急弯内缘保留的最小半径,防路面
 const BARRIER_INNER_RADIUS := 1.5  # 护栏偏移线在弯心外保留的最小半径
 const OFFSET_SKIP := 0.4           # 退距被收紧到低于此值时该截面不放护栏/砂石(路面已汇合)
 const FAR_S_EXCLUDE := 12.0        # 自身弯道近弧长段排除:护栏与自己路面天然重叠,不算冲突
+const FAR_Y_SEP := 3.0             # 远端路面垂向分离:高差 ≥ 此值视为立体交叉,互不收紧/开缺
 const FAR_MARGIN := 0.5            # 护栏线离任何远端路面截面的最小横向净距
 const GRID_CELL := 16.0            # 主路段空间网格 cell(3×3 邻域覆盖 ≥ 最大半宽+净距)
+
+# --- 高度路基边坡 ---
+const APRON_SLOPE := 0.5           # 边坡坡度(1:2,每米高放 2 米宽)
+const APRON_MIN_DROP := 0.35       # 路面高出草地平板该值才生成边坡截面
+const APRON_MAX_RUN := 60.0        # 坡长上限(超高路堤坡脚截断,余下悬空由草地兜底)
 
 var data: TrackData = null
 var junctions: Array = []   # 岔口记录:[{s: 主路弧长, half: 沿主路断开半长}](测试用)
@@ -86,6 +92,9 @@ func build(d: TrackData) -> void:
 	_grass_mat = _mat(Color(0.30, 0.55, 0.28))
 	_gravel_mat = _mat(GRAVEL_COLOR, 1.0)
 
+	# 远端路面网格(护栏退距收紧/路基边坡/桥下净空共用的空间索引)
+	_build_road_grid()
+
 	# --- 草地(先铺底) ---
 	add_child(_build_grass())
 
@@ -99,19 +108,27 @@ func build(d: TrackData) -> void:
 			dirt_corridors.append(_make_corridor(blended))
 
 	# --- 砂石路肩 + 外退式低护栏(护栏退离路缘;碰撞面远高于视觉) ---
+	var offs_l := PackedFloat32Array()
+	var offs_r := PackedFloat32Array()
 	if bool(data.options.get("walls", true)):
 		var off := maxf(0.0, float(data.options.get("barrier_offset", 8.0)))
 		var h := maxf(0.3, float(data.options.get("wall_height", 0.8)))
-		_build_road_grid()
-		var offs_l := _offsets(1.0, off)
-		var offs_r := _offsets(-1.0, off)
+		# 砂石路宽独立于护栏退距(缺省回退退距值 = 旧行为:砂石铺满到护栏脚)
+		var gw := maxf(0.0, float(data.options.get("gravel_width", off)))
+		offs_l = _offsets(1.0, off)
+		offs_r = _offsets(-1.0, off)
 		if off > 0.05:
-			var gravel := _build_gravel(off, offs_l, offs_r)
+			var gravel := _build_gravel(gw, offs_l, offs_r)
 			if gravel != null:
 				add_child(gravel)
-		var walls := _build_walls(off, h, offs_l, offs_r)
+		var walls := _build_walls(h, offs_l, offs_r)
 		if walls != null:
 			add_child(walls)
+
+	# --- 高度路基边坡(整体平的图不生成,零回归) ---
+	var apron := _build_aprons(offs_l, offs_r)
+	if apron != null:
+		add_child(apron)
 
 	# --- 路面标线(中心虚线 + 边线) ---
 	add_child(_build_markings())
@@ -517,6 +534,104 @@ func _build_grass() -> StaticBody3D:
 	body.add_child(mi)
 	return body
 
+## ---------------- 高度路基边坡 ----------------
+
+## 有高度的路由从路侧放坡到草地平板顶面(1:2 坡),高架路不再悬空、洼路不埋进平板。
+## 内缘贴砂石外缘/护栏脚(主路)或路缘外 0.5m(辅路);坡脚遇垂向贴近的远端路面
+## 自动收短(桥侧坡不吞并桥下车道);整体平的图完全不生成(零回归)。
+## 坡脚截断/岔口走廊开缺留下的敞口由下方草地平板兜底,不露空腔。
+func _build_aprons(offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
+	var y_min := 1e9
+	for route in data.routes:
+		var pts0: PackedVector3Array = route["pts"]
+		for p in pts0:
+			y_min = minf(y_min, p.y)
+	var slab_top := y_min - GRASS_DROP - 0.02
+	var walls_on := bool(data.options.get("walls", true))
+	var off := maxf(0.0, float(data.options.get("barrier_offset", 8.0)))
+	var gw := maxf(0.0, float(data.options.get("gravel_width", off)))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_material(_grass_mat)
+	var quads := 0
+	for route in data.routes:
+		var pts: PackedVector3Array = route["pts"]
+		var tans: PackedVector3Array = route["tans"]
+		var widths: PackedFloat32Array = route["widths"]
+		var s_arr: PackedFloat32Array = route["s_arr"]
+		var n := pts.size()
+		var is_main := String(route["surface"]) == "road"
+		var elevated := false
+		for i in n:
+			if pts[i].y - slab_top > APRON_MIN_DROP + GRASS_DROP:
+				elevated = true
+				break
+		if not elevated:
+			continue
+		for sgn: float in [1.0, -1.0]:
+			var kept: Array = []   # [截面索引, 内缘顶点, 坡脚顶点]
+			for i in n:
+				var drop: float = pts[i].y - slab_top
+				if drop <= APRON_MIN_DROP:
+					continue
+				var side := TrackData._flat_normal(tans[i])
+				var half: float = widths[i] * 0.5
+				var inner_off := half + 0.5
+				if is_main and walls_on and off > 0.05:
+					var w_off: float = float(offs_l[i] if sgn > 0.0 else offs_r[i])
+					inner_off = half + maxf(minf(gw, w_off), 0.3)
+				var inner := pts[i] + side * inner_off * sgn
+				inner.y = pts[i].y - 0.14
+				var want: float = minf((inner.y - slab_top) / APRON_SLOPE, APRON_MAX_RUN)
+				var run := _apron_run_limit(float(s_arr[i]), want, inner, side, sgn)
+				if run < 1.0:
+					continue
+				var outer := inner + side * run * sgn
+				outer.y = maxf(slab_top, inner.y - run * APRON_SLOPE)
+				kept.append([i, inner, outer])
+			for k in kept.size() - 1:
+				if int(kept[k + 1][0]) != int(kept[k][0]) + 1:
+					continue
+				var a: Array = kept[k]
+				var b: Array = kept[k + 1]
+				var mid: Vector3 = (a[1] + a[2] + b[1] + b[2]) * 0.25
+				if bool(_corridor_at(mid, 0.0)["blocked"]):
+					continue  # 岔口走廊内不开坡(会埋掉辅路口)
+				_strip_quad(st, a[1], a[2], b[2], b[1], Vector3.UP)
+				quads += 1
+	if quads == 0:
+		return null
+	var body := _body_with_mesh(st.commit(), "Grass")
+	body.name = "GrassApron"
+	return body
+
+## 坡长收短:坡脚(沿坡线下滑到 inner.y - run×APRON_SLOPE)不得落入任何垂向贴近的
+## 远端主路路面。梯子试探 + 二分,同 _far_road_limit 思路,只是探测点带坡度高度
+func _apron_run_limit(s_own: float, want: float, inner: Vector3, side: Vector3, sgn: float) -> float:
+	if want <= 1.0:
+		return want
+	var probe := func(run: float) -> bool:
+		var p := inner + side * run * sgn
+		p.y = inner.y - run * APRON_SLOPE
+		return _hits_far_road(p, s_own)
+	if not probe.call(want):
+		return want
+	var lo := 0.0
+	for cand: float in [12.0, 8.0, 4.0, 2.0]:
+		if cand >= want:
+			continue
+		if not probe.call(cand):
+			lo = cand
+			break
+	var hi := want
+	for k in 4:
+		var mid := (lo + hi) * 0.5
+		if probe.call(mid):
+			hi = mid
+		else:
+			lo = mid
+	return lo
+
 ## ---------------- 岔口走廊(护栏/砂石路开缺依据) ----------------
 
 ## 融合后 dirt 路由 → 走廊段集合。路面高度的路段在岔口处阻断护栏与砂石路;
@@ -722,7 +837,8 @@ func _build_road_grid() -> void:
 			_road_grid[key] = PackedInt32Array()
 		_road_grid[key].append(i)
 
-## 点是否落入任一远端路面走廊(近弧长段排除:护栏与自己/相邻截面天然贴近,不算冲突)。
+## 点是否落入任一远端路面走廊(近弧长段排除:护栏与自己/相邻截面天然贴近,不算冲突;
+## 垂向分离:高差 ≥ FAR_Y_SEP 视为立体交叉,桥上桥下互不算冲突——护栏/砂石各自保留)。
 ## 段级盒预筛先行(内联比较,免 _seg_dist 函数调用),调试版 GDScript 下查询便宜一个量级
 func _hits_far_road(p: Vector3, s_own: float) -> bool:
 	var cx := int(floor(p.x / GRID_CELL))
@@ -733,12 +849,14 @@ func _hits_far_road(p: Vector3, s_own: float) -> bool:
 		for gz in range(cz - 1, cz + 2):
 			var segs: PackedInt32Array = _road_grid.get(Vector2i(gx, gz), PackedInt32Array())
 			for i in segs:
+				var a: Vector3 = _rg_pts[i]
+				var b: Vector3 = _rg_pts[i + 1]
+				if absf((a.y + b.y) * 0.5 - p.y) >= FAR_Y_SEP:
+					continue
 				if absf(float(_rg_s[i]) - s_own) <= FAR_S_EXCLUDE \
 						and absf(float(_rg_s[i + 1]) - s_own) <= FAR_S_EXCLUDE:
 					continue
 				var r := float(_rg_widths[i]) * 0.5 + FAR_MARGIN
-				var a: Vector3 = _rg_pts[i]
-				var b: Vector3 = _rg_pts[i + 1]
 				if (qx < a.x - r and qx < b.x - r) or (qx > a.x + r and qx > b.x + r) \
 						or (qz < a.z - r and qz < b.z - r) or (qz > a.z + r and qz > b.z + r):
 					continue
@@ -746,11 +864,39 @@ func _hits_far_road(p: Vector3, s_own: float) -> bool:
 					return true
 	return false
 
-## ---------------- 砂石路肩(路缘 → 护栏脚下,Gravel 表面惩罚) ----------------
+## 自身环线高架:查询点上方若有远端主路截面(高出 ≥ FAR_Y_SEP 且横向贴近),
+## 返回其中最低的"桥面高度 - CORRIDOR_CLEARANCE"(桥下碰撞墙顶上限);
+## 无高架返回 1e9
+func _main_overhead_cap(p: Vector3, s_own: float) -> float:
+	var cap := 1e9
+	var cx := int(floor(p.x / GRID_CELL))
+	var cz := int(floor(p.z / GRID_CELL))
+	for gx in range(cx - 1, cx + 2):
+		for gz in range(cz - 1, cz + 2):
+			var segs: PackedInt32Array = _road_grid.get(Vector2i(gx, gz), PackedInt32Array())
+			for i in segs:
+				var a: Vector3 = _rg_pts[i]
+				var b: Vector3 = _rg_pts[i + 1]
+				var sy: float = (a.y + b.y) * 0.5
+				if sy < p.y + FAR_Y_SEP:
+					continue
+				if absf(float(_rg_s[i]) - s_own) <= FAR_S_EXCLUDE \
+						and absf(float(_rg_s[i + 1]) - s_own) <= FAR_S_EXCLUDE:
+					continue
+				var r := float(_rg_widths[i]) * 0.5 + FAR_MARGIN
+				if (p.x < a.x - r and p.x < b.x - r) or (p.x > a.x + r and p.x > b.x + r) \
+						or (p.z < a.z - r and p.z < b.z - r) or (p.z > a.z + r and p.z > b.z + r):
+					continue
+				if _seg_dist(Vector2(p.x, p.z), a, b) < r:
+					cap = minf(cap, sy - CORRIDOR_CLEARANCE)
+	return cap
 
+## ---------------- 砂石路肩(路缘 → 砂石外缘,Gravel 表面惩罚) ----------------
+
+## 砂石外缘 = min(gravel_width, 护栏退距收紧值)——砂石路宽独立可调,永不越过护栏线。
 ## 岔口处砂石 quad 按辅路走廊做精确多边形裁剪(边缘贴合辅路真实边界);
 ## 退距被收紧到 OFFSET_SKIP 以下的截面(汇合弯心)整段不放
-func _build_gravel(_off: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
+func _build_gravel(gw: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
 	var pts: PackedVector3Array = data.main["pts"]
 	var tans: PackedVector3Array = data.main["tans"]
 	var widths: PackedFloat32Array = data.main["widths"]
@@ -763,12 +909,13 @@ func _build_gravel(_off: float, offs_l: PackedFloat32Array, offs_r: PackedFloat3
 		var offs := offs_l if sgn > 0.0 else offs_r
 		var kept: Array = []   # [截面索引, {p,oc} 内缘, {p,oc} 外缘]
 		for i in n:
-			if offs[i] < OFFSET_SKIP:
+			var g_off: float = minf(gw, float(offs[i]))
+			if g_off < OFFSET_SKIP:
 				continue
 			var side := TrackData._flat_normal(tans[i])
 			var half: float = widths[i] * 0.5
 			var inner := pts[i] + side * half * sgn
-			var outer := pts[i] + side * (half + offs[i]) * sgn
+			var outer := pts[i] + side * (half + g_off) * sgn
 			inner.y -= GRAVEL_SEAM
 			outer.y -= GRAVEL_SLOPE
 			kept.append([i,
@@ -803,12 +950,13 @@ func _build_gravel(_off: float, offs_l: PackedFloat32Array, offs_r: PackedFloat3
 ## 视觉:路缘外 off 米处的低矮竖直条带(高 h);
 ## 碰撞:同一条线上从视觉顶再向上延伸到 BARRIER_COLLISION_H 并向下沉
 ## BARRIER_COLLISION_SINK——车撞上/腾跃砸到的是隐形高墙,飞不出去。
-## 岔口走廊处整体开缺;高架桥下碰撞墙顶压到桥面以下留净空;
-## 退距被收紧到 OFFSET_SKIP 以下的截面(发卡弯汇合弯心)不放。
-func _build_walls(_off: float, h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
+## 岔口走廊处整体开缺;高架桥下碰撞墙顶压到桥面以下留净空
+## (辅路走廊与自身环线高架桥面都算);退距被收紧到 OFFSET_SKIP 以下的截面不放。
+func _build_walls(h: float, offs_l: PackedFloat32Array, offs_r: PackedFloat32Array) -> StaticBody3D:
 	var pts: PackedVector3Array = data.main["pts"]
 	var tans: PackedVector3Array = data.main["tans"]
 	var widths: PackedFloat32Array = data.main["widths"]
+	var s_arr: PackedFloat32Array = data.main["s_arr"]
 	var n := pts.size()
 	var vis := SurfaceTool.new()
 	vis.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -828,7 +976,9 @@ func _build_walls(_off: float, h: float, offs_l: PackedFloat32Array, offs_r: Pac
 			var cor := _corridor_at(base, CORRIDOR_MARGIN)
 			if bool(cor["blocked"]):
 				continue
-			var col_h: float = minf(BARRIER_COLLISION_H, float(cor["cap"]) - base.y)
+			# 桥下净空:辅路走廊 cap 与自身环线高架桥面取更 低 者
+			var cap: float = minf(float(cor["cap"]), _main_overhead_cap(base, float(s_arr[i])))
+			var col_h: float = minf(BARRIER_COLLISION_H, cap - base.y)
 			if col_h < h + 0.2:
 				continue  # 高架太低贴住护栏,视同岔口开缺
 			kept.append([i, base, side * sgn, base.y + col_h])
@@ -838,8 +988,7 @@ func _build_walls(_off: float, h: float, offs_l: PackedFloat32Array, offs_r: Pac
 			var a: Array = kept[k]
 			var b: Array = kept[k + 1]
 			var wall_mid: Vector3 = (a[1] + b[1]) * 0.5
-			var wall_s := (float(data.main["s_arr"][int(a[0])]) \
-					+ float(data.main["s_arr"][int(b[0])])) * 0.5
+			var wall_s := (float(s_arr[int(a[0])]) + float(s_arr[int(b[0])])) * 0.5
 			if _hits_far_road(wall_mid, wall_s):
 				continue
 			var nrm: Vector3 = a[2]
@@ -898,23 +1047,31 @@ func _build_markings() -> MeshInstance3D:
 
 var _vcount := 0  # 标线网格手动维护的顶点计数
 
-## 沿中心线 s0→s1、横向 offset 处画一条标线 quad(offset 0 = 中心)
+## 沿中心线 s0→s1、横向 offset 处画一条标线 quad(offset 0 = 中心)。
+## 按 ≤2m 细分跟随路面折线弦:6m 单根长弦在凸竖曲线(坡顶)上会切进路面下方
 func _mark_quad(st: SurfaceTool, s0: float, s1: float, half_w: float, offset: float, lift: float) -> void:
-	var p0 := data.point_at(s0) + Vector3(0, lift, 0)
-	var p1 := data.point_at(s1) + Vector3(0, lift, 0)
-	var n0 := data.normal_at(s0)
-	var n1 := data.normal_at(s1)
-	var a := _vcount
-	for p in [p0 + n0 * (offset - half_w), p0 + n0 * (offset + half_w), p1 + n1 * (offset - half_w), p1 + n1 * (offset + half_w)]:
-		st.set_normal(Vector3.UP)
-		st.add_vertex(p)
-		_vcount += 1
-	st.add_index(a)
-	st.add_index(a + 2)
-	st.add_index(a + 1)
-	st.add_index(a + 1)
-	st.add_index(a + 2)
-	st.add_index(a + 3)
+	var steps := maxi(1, int(ceilf((s1 - s0) / 2.0)))
+	var prev := _mark_row(s0, half_w, offset, lift)
+	for k in range(1, steps + 1):
+		var row := _mark_row(s0 + (s1 - s0) * float(k) / float(steps), half_w, offset, lift)
+		var a := _vcount
+		for p in [prev[0], prev[1], row[0], row[1]]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(p)
+			_vcount += 1
+		st.add_index(a)
+		st.add_index(a + 2)
+		st.add_index(a + 1)
+		st.add_index(a + 1)
+		st.add_index(a + 2)
+		st.add_index(a + 3)
+		prev = row
+
+## 标线截面两顶点(横向 offset±half_w,路面折线弦上抬 lift)
+func _mark_row(s: float, half_w: float, offset: float, lift: float) -> Array:
+	var p := data.point_at(s) + Vector3(0, lift, 0)
+	var n := data.normal_at(s)
+	return [p + n * (offset - half_w), p + n * (offset + half_w)]
 
 ## ---------------- 起点 / 终点 ----------------
 
