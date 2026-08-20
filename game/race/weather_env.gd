@@ -142,16 +142,22 @@ static func _json_value(v):
 
 # ---------------- 环境装配（运行时与编辑器插件共用） ----------------
 
-## 由完整配置生成比赛用 Environment：程序化天空 + 天空环境光 + ACES + 雾(+辉光)
-static func make_env_cfg(c: Dictionary) -> Environment:
+## 由完整配置生成比赛用 Environment：程序化天空 + 天空环境光 + ACES + 雾(+辉光)。
+## clouds 非空且 enabled=true 时天空换体积云 shader（clayjohn 移植，见
+## VolumetricClouds），天空配色仍取本配置（各天气美术方向不变）；其余键不动。
+## clouds 缺省保持旧 ProceduralSkyMaterial 行为（编辑器插件/旧测试零改动）。
+static func make_env_cfg(c: Dictionary, clouds := {}) -> Environment:
 	var env := Environment.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = c.sky_top
-	sky_mat.sky_horizon_color = c.sky_horizon
-	sky_mat.ground_horizon_color = c.sky_ground_horizon
-	sky_mat.ground_bottom_color = c.sky_ground
 	var sky := Sky.new()
-	sky.sky_material = sky_mat
+	if clouds.get("enabled", false):
+		sky.sky_material = VolumetricClouds.make_material(c, clouds)
+	else:
+		var sky_mat := ProceduralSkyMaterial.new()
+		sky_mat.sky_top_color = c.sky_top
+		sky_mat.sky_horizon_color = c.sky_horizon
+		sky_mat.ground_horizon_color = c.sky_ground_horizon
+		sky_mat.ground_bottom_color = c.sky_ground
+		sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
@@ -165,6 +171,11 @@ static func make_env_cfg(c: Dictionary) -> Environment:
 	env.fog_enabled = true
 	env.fog_light_color = c.fog
 	env.fog_density = c.fog_density
+	if clouds.get("enabled", false):
+		# 云天空关闭天空雾化(fog_sky_affect 默认 1 会把无穷远的天空浸成雾色，
+		# 0.0035 的雾密度就能把整帧天空洗到 ~92% 雾色，体积云细节全被淹没)；
+		# 地表雾对赛道/远景几何体照常生效，观感层次不受影响
+		env.fog_sky_affect = 0.0
 	return env
 
 ## 由完整配置设置太阳光（角度/颜色/能量 + 软阴影调优）

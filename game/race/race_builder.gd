@@ -14,6 +14,7 @@ const AI_SCRIPT := preload("res://game/car/ai_racer.gd")
 const NPC_SCRIPT := preload("res://game/car/npc_car.gd")
 const COLLISION_KICK := preload("res://game/car/collision_kick.gd")
 const DRIFT_MODE := preload("res://game/car/drift_mode.gd")
+const SKID_MARKS := preload("res://game/car/skid_marks.gd")
 
 const PLAYER_COLOR := Color(1.0, 0.85, 0.2)
 const AI_COLORS := [Color(1.0, 0.3, 0.35), Color(0.3, 0.55, 1.0), Color(0.35, 0.85, 0.45)]
@@ -40,14 +41,14 @@ const SPAWN_DROP := 0.4
 ## 返回 {track, track_data, racers, player_racer, player_torque}。
 static func build(race: RaceManager, map_id: int, finish_cb: Callable, loot_cb: Callable) -> Dictionary:
 	var env: Dictionary = race.env_cfg
-	# --- 赛道 + 地图环境 ---
+	# --- 赛道 + 地图环境 + 体积云天空（配表驱动） ---
 	var t := _load_track(race, map_id)
 	var track: Node3D = t.track
 	var track_data: TrackData = t.data
 	track.setup(env)
 	track.get_node("FinishGate").body_entered.connect(finish_cb)
 	var we := WorldEnvironment.new()
-	we.environment = WeatherEnv.make_env_cfg(env)
+	we.environment = WeatherEnv.make_env_cfg(env, _cloud_cfg(map_id))
 	race.add_child(we)
 	var sun := DirectionalLight3D.new()
 	WeatherEnv.setup_light_cfg(sun, env)
@@ -128,19 +129,20 @@ static func _spawn_loot(race: RaceManager, track: Node3D, loot_cb: Callable) -> 
 			loot.collected.connect(loot_cb)
 
 static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackData, racers: Array[Racer]) -> Racer:
+	var ai_defs := Match.active_ai_defs()
 	var grid := {}
 	if Match.next_grid.is_empty():
 		# 首回合默认：玩家杆位，AI 依次靠后
 		grid[Match.PLAYER_NAME] = 1
-		for i in Match.AI_DEFS.size():
-			grid[Match.AI_DEFS[i].name] = i + 2
+		for i in ai_defs.size():
+			grid[ai_defs[i].name] = i + 2
 	else:
 		grid = Match.next_grid.duplicate()
 		var used := {}
 		for g in grid.values():
 			used[g] = true
 		var free_no := 1
-		for name_ in [Match.PLAYER_NAME] + Match.AI_DEFS.map(func(d): return d.name):
+		for name_ in [Match.PLAYER_NAME] + ai_defs.map(func(d): return d.name):
 			if not grid.has(name_):
 				while used.has(free_no):
 					free_no += 1
@@ -152,8 +154,8 @@ static func _spawn_racers(race: RaceManager, track: Node3D, track_data: TrackDat
 	racers.append(player)
 
 	# AI（随机装配 1~2 件改件制造差异）
-	for i in Match.AI_DEFS.size():
-		var d: Dictionary = Match.AI_DEFS[i]
+	for i in ai_defs.size():
+		var d: Dictionary = ai_defs[i]
 		var eq := {}
 		var cats := ["engine", "tires", "aero", "chassis"]
 		cats.shuffle()
@@ -199,6 +201,9 @@ static func _make_racer(race: RaceManager, track_data: TrackData, rname: String,
 	root.add_child(v)
 	race.add_child(root)
 	CarBuilder.add_team_banner(v, PLAYER_COLOR if is_player else AI_COLORS[ai_idx % AI_COLORS.size()])
+	# 极限工况车轮印（Game 表 skid_* 可调，玩家/AI 通用；须在 v 入树后挂——
+	# 面片锚到 v 的父节点、胎宽读 wheel_array，两者入树后才就绪）
+	_attach_skid_marks(v)
 
 	# 注意：脚本必须在入树前附加，否则 _physics_process 不会被启用
 	var ctrl := Node3D.new()
@@ -289,7 +294,8 @@ static func _npc_spot(track: Node3D, track_data: TrackData, i: int, count: int) 
 	return {"pos": Vector3(p.x, 0.0, p.z), "yaw": 0.0, "lane": p.x}
 
 ## NPC 单车装配：与 _make_racer 同款物理/视觉/冲击链路，差异：
-## - 挂 CarHealth（可被撞损，CollisionKick 按接近速度结算伤害）；
+## - 挂 CarHealth（可被撞损，CollisionKick 按接近速度结算伤害）+ 车顶血条
+##   （NpcHealthBar，满血隐藏、受击出现）；
 ## - Driver 换 npc_car.gd（慢速巡航 + 撞爆按类型掉落），不建 Racer（不排名不解冻依赖）
 static func _make_npc(race: RaceManager, track_data: TrackData, idx: int, cid: int, drop_route: String, spot: Dictionary, hp: float, speed_scale: float, loot_cb: Callable) -> void:
 	var root := Node3D.new()
@@ -324,12 +330,32 @@ static func _make_npc(race: RaceManager, track_data: TrackData, idx: int, cid: i
 	root.add_child(v)
 	race.add_child(root)
 	CarBuilder.add_team_banner(v, NPC_COLOR)
+	_attach_skid_marks(v)  # 被撞甩尾/急刹同样落印，与竞速车同一套表现
+	var bar := NpcHealthBar.new()
+	bar.name = "HealthBar"
+	v.add_child(bar)
+	bar.setup(v)
 	# 脚本须在入树前附加（同 _make_racer），否则 _physics_process 不启用
 	var ctrl := Node3D.new()
 	ctrl.name = "Driver"
 	ctrl.set_script(NPC_SCRIPT)
 	root.add_child(ctrl)
 	ctrl.setup(v, track_data, spot.lane, speed_scale, race, loot_cb, drop_route)
+
+## 极限工况车轮印装配（刹车抱死/漂移侧滑/烧胎打滑时在触点铺印，
+## 见 skid_marks.gd 头注释）。全车种通用，仅表现层，零物理改动
+static func _attach_skid_marks(v: Vehicle) -> void:
+	var skid := SKID_MARKS.new()
+	skid.name = "SkidMarks"
+	v.add_child(skid)
+	skid.setup(v, {
+		"lat_slip": Match.game_cfg("skid_lat_slip"),
+		"lon_slip": Match.game_cfg("skid_lon_slip"),
+		"lifetime": Match.game_cfg("skid_lifetime"),
+		"alpha": Match.game_cfg("skid_alpha"),
+		"gap": Match.game_cfg("skid_gap"),
+		"pool": Match.game_cfg("skid_pool"),
+	})
 
 ## 玩家车引擎声：VNS 合成组件（多 RPM 分层交叉淡化 + 事件音效），
 ## 采样库缺失时回退 GEVP 自带单采样变调，保证不出无声车
@@ -366,3 +392,15 @@ static func _grid_lane(track_data: TrackData, grid_no: int) -> float:
 	if track_data != null:
 		return track_data.grid_lane(grid_no)
 	return -3.5 if grid_no % 2 == 1 else 3.5
+
+# ---------------- 体积云天空（配表驱动） ----------------
+
+## 体积云参数（Game 表 env_cloud_*；offset 按图错开天气图采样起点）
+static func _cloud_cfg(map_id: int) -> Dictionary:
+	return {
+		"enabled": Match.game_cfg("env_clouds_enabled") > 0.5,
+		"coverage": Match.game_cfg("env_cloud_coverage"),
+		"density": Match.game_cfg("env_cloud_density"),
+		"wind": Match.game_cfg("env_cloud_wind"),
+		"offset": float((map_id * 137) % 1000),
+	}

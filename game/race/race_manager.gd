@@ -210,7 +210,7 @@ func _end_round() -> void:
 		return
 	ended = true
 	racing = false
-	var res := RoundResult.build(compute_order(), bool(Match.round_cfg().is_final))
+	var res := RoundResult.build(compute_order(), bool(Match.round_cfg().is_final), Match.points_snapshot())
 	var rewards: Array = Match.commit_round(res)
 	if res.champion != "":
 		toast.emit("CHAMPION: %s" % res.champion)

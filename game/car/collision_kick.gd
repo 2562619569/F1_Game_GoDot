@@ -11,10 +11,15 @@ extends Node3D
 ## 双方组件各发一次、方向相反，总动量守恒。轻蹭（< min_speed）与冷却期内不放大。
 ## 参数由 race_builder 从 Game 表 bump_* 注入；缺省值与表内默认一致，自检可直接注入。
 ##
-## 碰撞伤害（npc_damage_coeff）：车-车碰撞除冲量外还按接近速度折算伤害，只结算到
+## 碰撞伤害（npc_damage_coeff）：车-车碰撞除冲量外还按撞击速度折算伤害，只结算到
 ## 对方车挂的 CarHealth 子节点（NPC 交通车才有；玩家/AI 赛车不挂 → 免疫）。每次
 ## 碰撞各车组件只给「对方」记一次伤害：玩家撞 NPC 由玩家侧组件扣 NPC 血，NPC 互撞
-## 双方组件各扣对方一次，不重不漏。伤害与冲量共用同一死区/冷却/限速，重撞重扣。
+## 双方组件各扣对方一次，不重不漏。伤害按「施伤方自身车速」（碰前一步速度模长，
+## 与 HUD 表速同口径）占对方最大血量的比例结算：100km/h 一击半血、200km/h 直接
+## 撞坏、过死区的任意一击保底 1/4，npc_damage_coeff 为整体倍率（1 = 基准）。
+## 刻意不用相对接近速度 closing 折伤害——追尾慢速巡航的 NPC 时 closing 远低于
+## 表速（100 追 50 只剩 50），按 closing 结算玩家实测伤害对不上直觉；死区/冷却
+## 仍按 closing 判定（相对速度太小 = 无真实冲击，只算蹭）。
 ##
 ## 失稳窗口（destab_*）：冲量本身只给得起 ~0.1s 的旋转——高抓地胎（μ≈3）+ 0.9
 ## 自动反打 + 横摆稳定会把甩尾角速度瞬间吃掉（实测 8 m/s 角撞 0.6s 仅偏转 1.8°），
@@ -37,7 +42,9 @@ const DESTAB_STAB_SCALE := 0.3    # 窗口内横摆稳定强度缩放
 const DEFAULT_DESTAB_SPEED := 6.0
 const DEFAULT_DESTAB_TIME := 1.0
 const DEFAULT_DESTAB_GRIP := 0.40
-const DEFAULT_DAMAGE_COEFF := 1.5  # 每米/秒接近速度（超死区部分）折算的伤害
+const WRECK_KMH := 200.0          # 一击撞坏的接近速度（km/h）：伤害比例在此满格
+const DMG_MIN_FRACTION := 0.25    # 过死区任意一击的最低伤害（占对方最大血量比例）
+const DEFAULT_DAMAGE_COEFF := 1.0 # 伤害整体倍率（1 = 100km/h 半血 / 200km/h 撞坏基准）
 
 var strength := DEFAULT_STRENGTH  # 冲量倍率（×接近速度×折合质量）
 var min_speed := DEFAULT_MIN_SPEED  # 接近速度死区（m/s），低于只走原始求解
@@ -135,13 +142,15 @@ func _on_body_entered(body: Node) -> void:
 	if closing >= destab_speed:
 		_apply_destab(closing, n, other_pre)
 	# 碰撞伤害：只结算到对方车的 CarHealth（挂载约定见 npc_car.gd）；
-	# closing 已过 min_speed 死区，伤害 = 系数 × 超死区接近速度（沿用 max_speed 封顶）
+	# 速度取施伤方自身车速（≈HUD 表速，见头注释）而非 closing，按对方最大血量
+	# 比例扣血：100km/h→50%、200km/h→100% 撞坏、过死区保底 DMG_MIN_FRACTION
 	var health := other.get_node_or_null("CarHealth")
 	if health is CarHealth and damage_coeff > 0.0:
-		var dmg := damage_coeff * maxf(0.0, vc - min_speed)
-		if dmg > 0.0:
-			damage_dealt += dmg
-			(health as CarHealth).take_damage(dmg)
+		var v_kmh := _pre_vel.length() * 3.6
+		var frac := clampf(v_kmh / WRECK_KMH, DMG_MIN_FRACTION, 1.0)
+		var dmg := (health as CarHealth).hp_max * frac * damage_coeff
+		damage_dealt += dmg
+		(health as CarHealth).take_damage(dmg)
 
 ## 失稳窗口开启/续期：时长在 [DESTAB_MIN_TIME, destab_time] 间随超出阈值的接近
 ## 速度线性拉长；谁朝对方逼近得快谁是撞人方，挨打方拿全窗口、撞人方按份额打折。

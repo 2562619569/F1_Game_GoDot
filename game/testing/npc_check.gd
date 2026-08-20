@@ -4,11 +4,15 @@ extends Node3D
 ## 覆盖：
 ## 1. 配表：Car 表 701~703 NPC 段存在且物理参数与 601~603 逐项一致（同参数不同皮，
 ##    美术走占位回退），Game 表 npc_* 四项取值合法；
-## 2. CarHealth 单元：扣血 / 累计承伤 / 负伤害忽略 / 归零只发一次 destroyed；
+## 2. CarHealth 单元：扣血 / 累计承伤 / 负伤害忽略 / 归零只发一次 destroyed，
+##    有效扣血发 changed(cur,max)、负伤与补刀不重发；
+## 2b. 车顶血条（NpcHealthBar）：满血隐藏、受击出现、填充片左锚宽度=血量比例、
+##     配色随比例绿→红、底/填充片 billboard+无光照自发光、归零隐藏；
 ## 3. 碰撞伤害（手动触发 CollisionKick._on_body_entered，同 bump_check 确定性验数学，
-##    悬空消除胎阻污染）：玩家车（无 CarHealth）撞 NPC 只扣 NPC、伤害 = 系数 ×
-##    (closing − 死区)、轻蹭死区不扣、冷却期不重复扣、NPC 撞玩家不掉自己的血、
-##    NPC 互撞双方各扣一次不重不漏；
+##    悬空消除胎阻污染）：玩家车（无 CarHealth）撞 NPC 只扣 NPC、伤害按施伤方
+##    自身车速占对方最大血量的比例（100km/h 半血 / 200km/h 撞坏 / 过死区保底
+##    1/4 × npc_damage_coeff；追尾移动 NPC 按表速不按相对速度）、轻蹭死区不扣、
+##    冷却期不重复扣、NPC 撞玩家不掉自己的血、NPC 互撞双方各扣一次不重不漏；
 ## 4. 撞爆链路（完整装配 root + Vehicle + Kick + CarHealth + npc_car Driver）：
 ##    race_started 信号解冻后 NPC 确实开动；血量归零 → 整车退场 + 爆点生成
 ##    loot_pickup（id 在 Part 表）+ 爆炸粒子，玩家车组触发拾取收到 loot_cb。
@@ -19,7 +23,7 @@ const KICK := preload("res://game/car/collision_kick.gd")
 const NPC_SCRIPT := preload("res://game/car/npc_car.gd")
 ## 与 Game 表 bump_* / npc_damage_coeff 保持同步（表改值后此处跟进；伤害断言按此复算）
 const TEST_CFG := {"strength": 0.7, "min_speed": 2.0, "max_speed": 25.0, "yaw": 2.5,
-		"destab_speed": 6.0, "destab_time": 1.0, "destab_grip": 0.40, "damage_coeff": 1.5}
+		"destab_speed": 6.0, "destab_time": 1.0, "destab_grip": 0.40, "damage_coeff": 1.0}
 const NPC_HP := 100.0
 
 var _a: Vehicle   # 玩家角色车（无 CarHealth）
@@ -51,6 +55,7 @@ func _ready() -> void:
 	seed(20260818)
 	_check_tables()
 	_check_health_unit()
+	_check_health_bar()
 	_check_type_rolls()
 	_check_spawn_layout()
 	await _check_collision_damage()
@@ -213,6 +218,13 @@ func _check_spawn_layout() -> void:
 			cnt += 1
 	ok(cnt >= lo and cnt <= hi, "整场装配 NPC 数量在密度区间",
 			"%d ∈ [%d, %d]" % [cnt, lo, hi])
+	var bars := 0
+	for c in race.get_children():
+		if c.name.begins_with("NPC"):
+			for cc in c.get_children():
+				if cc is Vehicle and cc.get_node_or_null("HealthBar") != null:
+					bars += 1
+	ok(bars == cnt, "整场装配 NPC 全挂车顶血条", "%d/%d" % [bars, cnt])
 	race.free()
 
 # ---------------- 2. CarHealth 单元 ----------------
@@ -224,15 +236,65 @@ func _check_health_unit() -> void:
 	ok(h.hp == NPC_HP and h.hp_max == NPC_HP and h.alive(), "setup 后满血存活")
 	var fired := [0]  # 数组容器：GDScript lambda 按值捕获局部变量，裸 int 计数不生效
 	h.destroyed.connect(func(_n): fired[0] += 1)
+	var fired_chg := [0, -1.0, 0.0]  # [次数, 最近 cur, 最近 max]
+	h.changed.connect(func(c: float, m: float):
+		fired_chg[0] += 1
+		fired_chg[1] = c
+		fired_chg[2] = m)
 	h.take_damage(30.0)
 	ok(h.hp == 70.0 and h.damage_taken == 30.0, "扣血并累计承伤", "hp=%.0f taken=%.0f" % [h.hp, h.damage_taken])
+	ok(fired_chg[0] == 1 and fired_chg[1] == 70.0 and fired_chg[2] == NPC_HP,
+			"有效扣血发 changed(70, 100)", "n=%d cur=%.0f max=%.0f" % [fired_chg[0], fired_chg[1], fired_chg[2]])
 	h.take_damage(-5.0)
 	ok(h.hp == 70.0, "负伤害忽略", "hp=%.0f" % h.hp)
+	ok(fired_chg[0] == 1, "负伤害不发 changed", "n=%d" % fired_chg[0])
 	h.take_damage(999.0)
 	ok(h.hp == 0.0 and not h.alive() and fired[0] == 1, "归零发一次 destroyed", "hp=%.0f fired=%d" % [h.hp, fired[0]])
+	ok(fired_chg[0] == 2 and fired_chg[1] == 0.0, "归零发 changed(0, 100)",
+			"n=%d cur=%.0f" % [fired_chg[0], fired_chg[1]])
 	h.take_damage(10.0)
 	ok(fired[0] == 1, "死后补刀不重发 destroyed", "fired=%d" % fired[0])
+	ok(fired_chg[0] == 2, "死后补刀不重发 changed", "n=%d" % fired_chg[0])
 	h.queue_free()
+
+# ---------------- 2b. 车顶血条 ----------------
+
+## NpcHealthBar 表现单元：出现/隐藏时机、填充几何（左锚宽度=比例）、配色梯度、
+## 材质朝向（billboard 面向相机 + 无光照自发光保证阴雨/夜景可读）
+func _check_health_bar() -> void:
+	var v := _make_vehicle(Vector3(20, 1.8, 0), true)  # 悬空纯验表现，同步断言不落物理
+	var bar := NpcHealthBar.new()
+	bar.name = "HealthBar"
+	v.add_child(bar)
+	bar.setup(v)
+	var fill: MeshInstance3D = bar.get_node("Fill")
+	var mat := fill.material_override as StandardMaterial3D
+	var bg_mat := (bar.get_node("BarBg") as MeshInstance3D).material_override as StandardMaterial3D
+	var fw := NpcHealthBar.WIDTH - NpcHealthBar.INSET * 2.0
+
+	ok(v.get_node_or_null("HealthBar") == bar, "血条挂在车体 HealthBar 位")
+	ok(bar.visible == false, "满血时血条隐藏")
+	ok(mat.billboard_mode == BaseMaterial3D.BILLBOARD_ENABLED
+			and bg_mat.billboard_mode == BaseMaterial3D.BILLBOARD_ENABLED,
+			"底片/填充片均 billboard 朝相机")
+	ok(mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and mat.emission_enabled,
+			"填充片无光照 + 自发光")
+
+	var h := v.get_node("CarHealth") as CarHealth
+	h.take_damage(30.0)
+	ok(bar.visible == true, "受击后血条出现")
+	ok(absf(fill.scale.x - 0.7) < 0.01, "填充宽度 = 血量比例", "= %.2f" % fill.scale.x)
+	ok(absf(fill.position.x - (-fw * 0.15)) < 0.005, "填充片左端锚定（居中向右收）",
+			"x=%.3f 期望 %.3f" % [fill.position.x, -fw * 0.15])
+	var c70 := mat.albedo_color
+	ok(c70.g > c70.r and c70.b < c70.r, "70% 血配色偏绿黄", "(%.2f, %.2f, %.2f)" % [c70.r, c70.g, c70.b])
+	h.take_damage(50.0)  # → 剩 20%
+	ok(absf(fill.scale.x - 0.2) < 0.01, "连续受击填充跟随（20%）", "= %.2f" % fill.scale.x)
+	var c20 := mat.albedo_color
+	ok(c20.r > c20.g, "20% 血配色转红", "(%.2f, %.2f, %.2f)" % [c20.r, c20.g, c20.b])
+	h.take_damage(999.0)
+	ok(bar.visible == false, "归零后血条隐藏（随后撞爆整车退场）")
+	v.queue_free()
 
 # ---------------- 3. 碰撞伤害（手动触发，悬空验数学） ----------------
 
@@ -248,44 +310,64 @@ func _check_collision_damage() -> void:
 	_hc = _c.get_node("CarHealth") as CarHealth
 	await _frames(2)  # 服务器端 inertia 同步（同 bump_check 质量段注释）
 
-	# 玩家撞 NPC：closing 8 → 伤害 = 1.5×(8−2) = 9
+	# 玩家撞 NPC：closing 8 m/s = 28.8 km/h → 保底档，伤害 = 100 × 25% × 1.0 = 25
 	# 手动触发前双方组件的 _pre_vel 都要归位（运行时由每物理步自动记录，测试须
 	# 手动同步，否则上一场景的旧速度串进本场景的接近速度）
 	_reset_kick(_ka, Vector3(-8.0, 0, 0))
 	_reset_kick(_kb, Vector3.ZERO)
 	_ka._on_body_entered(_b)
-	ok(_hb.hp == NPC_HP - 9.0, "玩家撞 NPC 按公式扣血（9 点）", "hp=%.1f" % _hb.hp)
-	ok(_ka.damage_dealt == 9.0, "攻击方记账 damage_dealt", "= %.1f" % _ka.damage_dealt)
+	ok(_hb.hp == NPC_HP - 25.0, "玩家撞 NPC 按公式扣血（保底 1/4 = 25 点）", "hp=%.1f" % _hb.hp)
+	ok(_ka.damage_dealt == 25.0, "攻击方记账 damage_dealt", "= %.1f" % _ka.damage_dealt)
 	ok(_a.get_node_or_null("CarHealth") == null, "玩家车无 CarHealth（结构免疫）")
-	ok(_hb.hp == NPC_HP - 9.0, "玩家撞 NPC 后玩家方无血量变化（无组件可扣）")
+	ok(_hb.hp == NPC_HP - 25.0, "玩家撞 NPC 后玩家方无血量变化（无组件可扣）")
 
 	# 冷却期内重复触发：伤害不再结算
 	_ka._pre_vel = Vector3(-8.0, 0, 0)
 	_ka._on_body_entered(_b)
-	ok(_hb.hp == NPC_HP - 9.0, "冷却期内不重复扣血", "hp=%.1f" % _hb.hp)
+	ok(_hb.hp == NPC_HP - 25.0, "冷却期内不重复扣血", "hp=%.1f" % _hb.hp)
 
 	# NPC 撞玩家：伤害只记对方，玩家无组件 → NPC 自己也不掉血（不掉自己的血）
 	_reset_kick(_kb, Vector3(8.0, 0, 0))
 	_reset_kick(_ka, Vector3.ZERO)
 	_kb._on_body_entered(_a)
-	ok(_hb.hp == NPC_HP - 9.0 and _kb.damage_dealt == 0.0, "NPC 撞玩家双方均不掉血",
+	ok(_hb.hp == NPC_HP - 25.0 and _kb.damage_dealt == 0.0, "NPC 撞玩家双方均不掉血",
 			"hpB=%.1f dealt=%.1f" % [_hb.hp, _kb.damage_dealt])
 
 	# 轻蹭死区：closing 1.5 < bump_min_speed → 整段跳过
 	_reset_kick(_ka, Vector3(-1.5, 0, 0))
 	_reset_kick(_kb, Vector3.ZERO)
 	_ka._on_body_entered(_b)
-	ok(_hb.hp == NPC_HP - 9.0 and _ka.damage_dealt == 0.0, "轻蹭死区不扣血", "hp=%.1f" % _hb.hp)
+	ok(_hb.hp == NPC_HP - 25.0 and _ka.damage_dealt == 0.0, "轻蹭死区不扣血", "hp=%.1f" % _hb.hp)
 
-	# NPC 互撞：双方组件各给对方记一次，各扣 9
+	# NPC 互撞：双方组件各给对方记一次，各扣保底 25
 	_reset_kick(_kb, Vector3(-8.0, 0, 0))  # B 向 C 逼近
 	_reset_kick(_kc, Vector3.ZERO)
 	_kb._on_body_entered(_c)
 	_kc._on_body_entered(_b)
-	ok(_hc.hp == NPC_HP - 9.0 and _kb.damage_dealt == 9.0, "NPC 互撞 B 扣 C 一次",
+	ok(_hc.hp == NPC_HP - 25.0 and _kb.damage_dealt == 25.0, "NPC 互撞 B 扣 C 一次",
 			"hpC=%.1f" % _hc.hp)
-	ok(_hb.hp == NPC_HP - 18.0 and _kc.damage_dealt == 9.0, "NPC 互撞 C 扣 B 一次（互伤不重不漏）",
+	ok(_hb.hp == NPC_HP - 50.0 and _kc.damage_dealt == 25.0, "NPC 互撞 C 扣 B 一次（互伤不重不漏）",
 			"hpB=%.1f" % _hb.hp)
+
+	# 追尾移动 NPC：B 以 50km/h 同向逃逸、玩家 100km/h 追上（closing 只剩 50km/h
+	# 但过死区），伤害仍按施伤方表速 100km/h = 半血 50 点 → B 50 血直接撞坏。
+	# 锁定「按表速不按相对速度」语义：按 closing 结算只会扣保底 25
+	_reset_kick(_ka, Vector3(-100.0 / 3.6, 0, 0))
+	_reset_kick(_kb, Vector3(-50.0 / 3.6, 0, 0))
+	_ka._on_body_entered(_b)
+	ok(_hb.hp == 0.0 and not _hb.alive() and absf(_ka.damage_dealt - NPC_HP * 0.5) < 0.01,
+			"追尾 50km/h 的 NPC 仍按自身 100km/h 表速扣半血", "hpB=%.1f dealt=%.1f" % [_hb.hp, _ka.damage_dealt])
+
+	# 速度比例档位（拿残血 75 的 C 验）：100km/h 一击恰好半血 50 → 剩 25；
+	# 200km/h 比例满格 → 一下撞坏归零（浮点除乘回 100 有 ulp 误差，容差比较）
+	_reset_kick(_ka, Vector3(-100.0 / 3.6, 0, 0))
+	_reset_kick(_kc, Vector3.ZERO)
+	_ka._on_body_entered(_c)
+	ok(absf(_hc.hp - NPC_HP * 0.25) < 0.01 and absf(_ka.damage_dealt - NPC_HP * 0.5) < 0.01,
+			"100km/h 一击扣一半（50 点）", "hpC=%.1f dealt=%.1f" % [_hc.hp, _ka.damage_dealt])
+	_reset_kick(_ka, Vector3(-200.0 / 3.6, 0, 0))
+	_ka._on_body_entered(_c)
+	ok(_hc.hp == 0.0 and not _hc.alive(), "200km/h 一下撞坏", "hpC=%.1f" % _hc.hp)
 
 	_a.queue_free()
 	_b.queue_free()

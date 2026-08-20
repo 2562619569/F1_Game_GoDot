@@ -6,6 +6,7 @@ extends Node
 ## 一次）；销毁表现与掉落由挂载方（npc_car.gd）接信号处理，本组件不自杀不刷特效。
 
 signal destroyed(car: Node)
+signal changed(cur: float, max: float)  # 有效伤害后的血量变动，供血条等表现层订阅
 
 var hp := 100.0
 var hp_max := 100.0
@@ -24,5 +25,6 @@ func take_damage(amount: float) -> void:
 		return
 	hp = maxf(0.0, hp - amount)
 	damage_taken += amount
+	changed.emit(hp, hp_max)
 	if hp <= 0.0:
 		destroyed.emit(get_parent())

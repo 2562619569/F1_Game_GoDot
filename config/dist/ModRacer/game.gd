@@ -34,7 +34,7 @@ var data = \
 21:{ "id":21,  "key":'npc_count',  "value":20.0,  "note":'NPC traffic cars per round (max; rolled within [npc_count_min, this])', },
 22:{ "id":22,  "key":'npc_hp',  "value":100.0,  "note":'NPC traffic car hit points', },
 23:{ "id":23,  "key":'npc_speed_scale',  "value":0.45,  "note":'NPC cruise speed scale vs AI pace', },
-24:{ "id":24,  "key":'npc_damage_coeff',  "value":1.5,  "note":'NPC collision damage per m/s closing speed above bump_min_speed', },
+24:{ "id":24,  "key":'npc_damage_coeff',  "value":1.0,  "note":'NPC collision damage scale on speed fraction (100km/h=50% hp, 200km/h=wreck, floor 25% per hit)', },
 25:{ "id":25,  "key":'npc_w_common',  "value":70.0,  "note":'NPC type spawn weight: common (701, npc_common loot)', },
 26:{ "id":26,  "key":'npc_count_min',  "value":15.0,  "note":'NPC traffic cars per round (min for random density)', },
 27:{ "id":27,  "key":'npc_w_rare',  "value":25.0,  "note":'NPC type spawn weight: rare (702, npc_rare loot)', },
@@ -45,6 +45,16 @@ var data = \
 32:{ "id":32,  "key":'drift_slip_assist',  "value":0.55,  "note":'Steering slip assist threshold while drifting (rad)', },
 33:{ "id":33,  "key":'drift_yaw_engage',  "value":0.22,  "note":'Yaw stability engage angle while drifting (dot domain, ~40deg max drift angle)', },
 34:{ "id":34,  "key":'drift_yaw_kick',  "value":0.25,  "note":'Drift-entry yaw kick angular velocity (rad/s, x steering input)', },
+35:{ "id":35,  "key":'skid_lat_slip',  "value":0.2,  "note":'Lateral slip angle threshold for tire marks (rad, ~11.5deg)', },
+36:{ "id":36,  "key":'skid_lon_slip',  "value":0.2,  "note":'Longitudinal slip threshold for tire marks (lockup/wheelspin)', },
+37:{ "id":37,  "key":'skid_lifetime',  "value":25.0,  "note":'Tire mark fade-out duration (sec)', },
+38:{ "id":38,  "key":'skid_alpha',  "value":0.75,  "note":'Tire mark peak opacity', },
+39:{ "id":39,  "key":'skid_gap',  "value":0.35,  "note":'Min segment length between mark quads (m)', },
+40:{ "id":40,  "key":'skid_pool',  "value":4096.0,  "note":'Ring buffer segments per car (oldest overwritten)', },
+41:{ "id":41,  "key":'env_clouds_enabled',  "value":1.0,  "note":'Volumetric cloud sky master switch (clayjohn raymarch sky shader)', },
+42:{ "id":42,  "key":'env_cloud_coverage',  "value":0.3,  "note":'Base cloud coverage 0.1-1 (per-weather preset multiplies on top)', },
+43:{ "id":43,  "key":'env_cloud_density',  "value":0.055,  "note":'Base cloud density (absorption)', },
+44:{ "id":44,  "key":'env_cloud_wind',  "value":2.5,  "note":'Cloud wind speed', },
 
 }
 

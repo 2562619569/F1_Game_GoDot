@@ -11,11 +11,17 @@ signal equipped_changed
 signal cosmetics_changed
 
 const PLAYER_NAME := "YOU"
-## AI 对手：名字 / 底盘 / 强度系数（作用于扭矩，制造名次差异）
+## AI 对手池：名字 / 底盘 / 强度系数（作用于扭矩，制造名次差异）。
+## 底盘只有 601~603 三台玩家车，第 4 个起循环复用；强度递减制造梯队。
+## 实际入座数量由 ai_count 决定（房间界面 +ADD AI 调整）。
 const AI_DEFS := [
 	{"name": "RIVAL-1", "car_id": 601, "skill": 1.0},
 	{"name": "RIVAL-2", "car_id": 602, "skill": 0.93},
 	{"name": "RIVAL-3", "car_id": 603, "skill": 0.87},
+	{"name": "RIVAL-4", "car_id": 601, "skill": 0.82},
+	{"name": "RIVAL-5", "car_id": 602, "skill": 0.78},
+	{"name": "RIVAL-6", "car_id": 603, "skill": 0.74},
+	{"name": "RIVAL-7", "car_id": 601, "skill": 0.70},
 ]
 
 ## Car 表 id 段边界：≥ 此值为 NPC 交通车专用段（race_builder.NPC_CAR_IDS），
@@ -46,10 +52,12 @@ var equipped := {}                 # category -> part_id（同类型唯一装配
 var cosmetics := {}                # category -> cosmetic_id（外观件装配，独立于 equipped）
 
 var round_index := 0               # 当前回合序号（1~round_count）
-var round_history: Array = []      # 每回合结算 [{name, is_player, rank, time, dnf}]
+var ai_count := 4                  # 房间当前入座 AI 数（player_max-1 为上限，reset 回默认 4）
+var round_history: Array = []      # 每回合结算 [{name, is_player, rank, time, dnf, points}]
+var points := {}                   # racer name -> 累计积分（Round 表按名次累加）
 var next_grid := {}                # racer name -> 下回合发车位（1 = 最前）
 var upcoming_map_id := 1           # 已预报的下回合地图（局间展示 + 下回合实际使用）
-var champion := ""                 # 决赛冠军名
+var champion := ""                 # 积分总冠军名（决赛后按累计积分定）
 
 # ---- 测试辅助 ----
 var auto_test := false             # 冒烟测试：玩家车自动驾驶
@@ -61,7 +69,9 @@ func reset() -> void:
 	equipped = {}
 	cosmetics = {}
 	round_index = 0
+	ai_count = 4
 	round_history = []
+	points = {}
 	next_grid = {}
 	upcoming_map_id = _roll_map_for_round(1)
 	champion = ""
@@ -81,11 +91,30 @@ func game_cfg(key: String) -> float:
 func round_count() -> int:
 	return int(game_cfg("round_count"))
 
+## 房间当前实际入座的 AI 定义（AI_DEFS 前 ai_count 个），
+## race_builder / 房间界面共用，改 ai_count 后取到的名单即时变化。
+func active_ai_defs() -> Array:
+	return AI_DEFS.slice(0, clampi(ai_count, 0, AI_DEFS.size()))
+
 func car_cfg(cid := car_id) -> Dictionary:
 	return Settings.car.data[cid]
 
 func round_cfg(idx := round_index) -> Dictionary:
 	return Settings.round.data[clampi(idx, 1, round_count())]
+
+## 名次 -> 本回合积分（Round 表 points 列，索引 = 名次-1）。
+## 名次超出表长度（如 8 车满编配 4 位表）或非法名次按 0 分处理。
+func round_points_for(rank: int, idx := round_index) -> int:
+	if rank < 1:
+		return 0
+	var arr: Array = round_cfg(idx).points
+	if rank > arr.size():
+		return 0
+	return int(arr[rank - 1])
+
+## 累计积分快照：RoundResult.build 计算决赛冠军时传入（保持其纯函数性）
+func points_snapshot() -> Dictionary:
+	return points.duplicate()
 
 func map_cfg(mid: int) -> Dictionary:
 	return Settings.map.data[mid]
@@ -306,13 +335,15 @@ func grant_rank_rewards(rank: int) -> Array:
 	return out
 
 ## 回合结算的唯一写入口：RaceManager 产出 RoundResult 后由这里提交到全局状态
-## （发车位 / 奖励入包 / 回合历史 / 下回合地图 / 冠军）。
+## （发车位 / 奖励入包 / 积分累计 / 回合历史 / 下回合地图 / 冠军）。
 ## 未来联机或独立结算系统只需替换本方法，RaceManager 不再直写这些字段。
 func commit_round(res: RoundResult) -> Array:
 	next_grid = res.next_grid.duplicate()
 	var rewards := compute_rank_rewards(res.player_rank)
 	for pid in rewards:
 		add_to_backpack(pid)
+	for e in res.results:
+		points[e.name] = int(points.get(e.name, 0)) + int(e.points)
 	round_history.append(res.results)
 	roll_upcoming_map()
 	if res.champion != "" and champion == "":

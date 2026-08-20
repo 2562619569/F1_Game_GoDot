@@ -81,7 +81,7 @@ func _check_round_result() -> void:
 	ok(res.player_rank == 1, "玩家名次识别（P1）")
 	ok(res.champion == "", "非决赛不产生冠军")
 	var final := RoundResult.build(order, true)
-	ok(final.champion == "YOU", "决赛冠军 = 第 1 名")
+	ok(final.champion == "YOU", "决赛冠军 = 累计积分最高（无历史分时 = 第 1 名）")
 
 # ---------------- 地图发车格几何 ----------------
 

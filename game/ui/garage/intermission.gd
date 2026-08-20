@@ -61,14 +61,20 @@ func _cell(text: String, font_size := 16, color := UIStyle.TEXT) -> Label:
 	return l
 
 func _render_results() -> void:
+	results_grid.columns = 5
 	for c in results_grid.get_children():
 		c.queue_free()
-	for h in ["#", "DRIVER", "TIME"]:
+	for h in ["#", "DRIVER", "TIME", "+PTS", "TOTAL"]:
 		results_grid.add_child(_cell(h, 13, UIStyle.TEXT_DIM))
 	for e in _results:
 		results_grid.add_child(_cell("P%d" % e.rank, 15, UIStyle.ACCENT_WARM if e.is_player else UIStyle.TEXT))
 		results_grid.add_child(_cell(String(e.name), 15, UIStyle.ACCENT if e.is_player else UIStyle.TEXT))
 		results_grid.add_child(_cell("DNF" if e.dnf else "%.1fs" % e.time, 15, UIStyle.TEXT_DIM))
+		# 本回合新增积分 + 赛前累计（commit_round 已含本回合，差额即新增）
+		var gained := int(e.points)
+		var total := int(Match.points.get(e.name, gained))
+		results_grid.add_child(_cell("+%d" % gained, 15, UIStyle.ACCENT_WARM if gained > 0 else UIStyle.TEXT_DIM))
+		results_grid.add_child(_cell("%d" % total, 15, UIStyle.ACCENT if e.is_player else UIStyle.TEXT))
 
 	for c in rewards_box.get_children():
 		c.queue_free()

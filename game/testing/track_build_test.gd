@@ -76,29 +76,22 @@ func _ready() -> void:
 	ok(absf(unit_radii[1] - 1.0) < 0.001, "三点曲率半径公式 R=1 (%.3f)" % unit_radii[1])
 
 	var road_edge_bad := 0
-	var barrier_curve_bad := 0
 	var main_pts: PackedVector3Array = data.main["pts"]
 	var main_widths: PackedFloat32Array = data.main["widths"]
 	var main_radii: PackedFloat32Array = data.main["radii"]
 	for sgn: float in [1.0, -1.0]:
 		var edges: PackedFloat32Array = builder._edge_offsets(data.main, sgn)
-		var offsets: PackedFloat32Array = builder._offsets(sgn, 8.0)
 		for i in range(1, main_pts.size() - 1):
 			var cross: float = builder._turn_cross(main_pts[i - 1], main_pts[i], main_pts[i + 1])
 			var inner := -1.0 if cross > 0.0 else 1.0
 			if absf(cross) < 1e-6 or sgn != inner:
 				continue
 			var edge_limit := maxf(0.0, float(main_radii[i]) - TrackBuilder.ROAD_INNER_RADIUS)
-			# 护栏锚有效路缘:总退距(有效路缘+退距)≤ R-1.5(收拢区护栏贴实际路面边,
-			# 弯心不再强制断开;开缺由远端走廊判定,zfight 检查覆盖)
-			var barrier_total := float(offsets[i]) + float(edges[i])
-			var barrier_limit := float(main_radii[i]) - TrackBuilder.BARRIER_INNER_RADIUS
+			# 护栏由距离场等值线驱动(见下"贴合 off 等值线"断言),
+			# 逐截面退距上限的旧断言随之退役
 			if edges[i] > edge_limit + 0.001:
 				road_edge_bad += 1
-			if barrier_total > barrier_limit + 0.001:
-				barrier_curve_bad += 1
 	ok(road_edge_bad == 0, "急弯路面内缘不越过弯心(越界 %d)" % road_edge_bad)
-	ok(barrier_curve_bad == 0, "急弯护栏总退距不越过弯心(越界 %d)" % barrier_curve_bad)
 
 	# --- 退距场核心性质(Lipschitz 斜率 ≤1:弯内缘平滑收拢,领结在构造上不可能) ---
 	var saw := PackedFloat32Array([8.0, 8.0, 0.0, 8.0, 8.0])
@@ -180,44 +173,35 @@ func _ready() -> void:
 	ok(get_tree().get_nodes_in_group("Gravel").size() >= 1, "Gravel 组 %d 个(砂石路肩)" % get_tree().get_nodes_in_group("Gravel").size())
 	ok(builder.junctions.size() == 2, "岔口融合 %d 处(2 个 dirt 端头均衔主路)" % builder.junctions.size())
 
-	# --- 外退式护栏:退离路缘 + 视觉低矮 + 碰撞面远高于视觉 ---
-	# 急弯内侧按曲率收紧到 BARRIER_INNER_RADIUS,发卡弯 R<half 时必须收紧
-	# 防偏移线自交);发卡弯附近最近投影会串到另一条腿,故另加主体占比断言
+	# --- 外围式护栏:等值线语义——墙体全部顶点贴 F=off 等值线(对路面并集的净距
+	# 就是场值,精确;两腿贴近处等值线在腰部合拢,腿间天然无墙) ---
 	var walls: StaticBody3D = builder.get_node_or_null("Walls") as StaticBody3D
 	ok(walls != null, "护栏生成")
 	if walls != null:
 		var wmi: MeshInstance3D = walls.get_child(1)
 		var wverts: PackedVector3Array = wmi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-		# 退距下限 0.3:急弯/邻腿贴近处按远端路面走廊收紧(可低至 OFFSET_SKIP=0.4),
-		# 发卡弯汇合弯心整段不放;护栏与路面走廊的硬约束在"任何顶点不得在路面内"断言。
-		# 退距按有效路缘分(急弯收拢区路面边 < 全宽半路面,护栏贴实际路面边)
-		var wall_eff_l: PackedFloat32Array = builder._edge_offsets(data.main, 1.0)
-		var wall_eff_r: PackedFloat32Array = builder._edge_offsets(data.main, -1.0)
-		var setback_bad := 0
+		var off_opt := maxf(0.0, float(data.options.get("barrier_offset", 8.0)))
+		var iso_bad := 0
 		var vis_bad := 0
-		var near_off := 0
+		var in_pav := 0
 		for v in wverts:
-			var lat: Dictionary = data.main_lateral(v)
-			var ws := float(lat["s"])
-			var wn := data.normal_at(ws)
-			var wrel: Vector3 = v - (lat["foot"] as Vector3)
-			var eff_arr := wall_eff_l if wrel.x * wn.x + wrel.z * wn.z >= 0.0 else wall_eff_r
-			var sb: float = float(lat["dist"]) - data.field_at(eff_arr, ws)
-			var vh: float = v.y - float(lat["road_y"])
-			if sb < 0.3 or sb > 11.0:
-				setback_bad += 1
-			if sb >= 6.5 and sb <= 9.5:
-				near_off += 1
-			if vh < -0.3 or vh > 0.95:
+			var res: Dictionary = builder.field_all.sample(v.x, v.z)
+			var f_v := float(res["f"])
+			if absf(f_v - off_opt) > 0.8:
+				iso_bad += 1
+			if f_v < 0.05:
+				in_pav += 1
+			var vh: float = v.y - float(res["y"])
+			if vh < -0.35 or vh > 0.95:
 				vis_bad += 1
-		ok(wverts.size() > 0 and setback_bad == 0, "护栏退距带 0.3~11m(越界 %d/%d)" % [setback_bad, wverts.size()])
-		ok(near_off > wverts.size() * 0.85, "护栏主体退距 ≈8m(%.0f%% 在 6.5~9.5m)" % (100.0 * near_off / wverts.size()))
-		ok(vis_bad == 0, "视觉护栏低矮(≤0.95m,越界 %d)" % vis_bad)
+		ok(wverts.size() > 0 and iso_bad == 0,
+				"护栏贴合 off 等值线(偏离 %d/%d)" % [iso_bad, wverts.size()])
+		ok(in_pav == 0, "护栏不落在路面并集内(%d 顶点)" % in_pav)
+		ok(vis_bad == 0, "视觉护栏低矮(越界 %d)" % vis_bad)
 		var wshape: ConcavePolygonShape3D = (walls.get_child(0) as CollisionShape3D).shape
 		var col_top := -1e9
 		for v in wshape.get_faces():
-			var lat: Dictionary = data.main_lateral(v)
-			col_top = maxf(col_top, v.y - float(lat["road_y"]))
+			col_top = maxf(col_top, v.y - float(builder.field_all.sample(v.x, v.z)["y"]))
 		ok(col_top > 3.5, "护栏碰撞墙远高于视觉(碰撞顶高 %.1fm vs 视觉 0.8m)" % col_top)
 
 	# --- 条带面绕序:Godot 正面=顺时针,几何叉积须与顶点法线反向 ---
@@ -249,6 +233,8 @@ func _ready() -> void:
 	var eff_r_ray := builder._edge_offsets(data.main, -1.0)
 	var ray_l_gravel := 0
 	var ray_r_gravel := 0
+	var ray_l_total := 0
+	var ray_r_total := 0
 	var ray_grass_pos := ""
 	var ray_total := 0
 	var s_ray := 60.0
@@ -262,6 +248,10 @@ func _ready() -> void:
 					Vector3(p_r.x, p_r.y + 1.0, p_r.z), Vector3(p_r.x, p_r.y - 0.5, p_r.z))
 			var hit := space.intersect_ray(q)
 			ray_total += 1
+			if side_r > 0.0:
+				ray_l_total += 1
+			else:
+				ray_r_total += 1
 			if hit.is_empty():
 				continue
 			var g0: Array = (hit["collider"] as CollisionObject3D).get_groups()
@@ -276,8 +266,8 @@ func _ready() -> void:
 		s_ray += 40.0
 	ok(ray_grass_pos == "",
 			"路肩物理射线无草平板穿透(%s / %d)" % [ray_grass_pos if ray_grass_pos != "" else "无", ray_total])
-	ok(ray_l_gravel > ray_total * 0.6 and ray_r_gravel > ray_total * 0.6,
-			"左右路肩物理射线均命中 Gravel(左 %d 右 %d / %d)" % [ray_l_gravel, ray_r_gravel, ray_total])
+	ok(ray_l_gravel > ray_l_total * 0.9 and ray_r_gravel > ray_r_total * 0.9,
+			"左右路肩物理射线均命中 Gravel(左 %d/%d 右 %d/%d)" % [ray_l_gravel, ray_l_total, ray_r_gravel, ray_r_total])
 
 	var has_trimesh := false
 	for group in ["Road", "Dirt"]:
@@ -362,30 +352,38 @@ func _test_elevation() -> void:
 	eb.build(elev)
 	ok(eb.get_node_or_null("Walls") != null and eb.get_node_or_null("Gravel") != null,
 			"高架环线护栏+砂石生成")
-	# 远端路面 y 分离:平图两腿贴近 → 护栏收紧;高架 Δy=6 ≥ 3 → 互不收紧
-	var n_straight := 51   # 下直道采样数(x -80..120 步 4)
-	var offs_f: PackedFloat32Array = fb._offsets(1.0, 8.0)
-	var offs_e: PackedFloat32Array = eb._offsets(1.0, 8.0)
-	var sum_flat := 0.0
-	var sum_elev := 0.0
-	for i in n_straight:
-		sum_flat += float(offs_f[i])
-		sum_elev += float(offs_e[i])
-	ok(sum_elev / n_straight > 7.5, "桥上桥下护栏退距不收紧(均值 %.2fm)" % (sum_elev / n_straight))
-	ok(sum_flat / n_straight < 6.0, "平图对照:贴近腿收紧(均值 %.2fm)" % (sum_flat / n_straight))
+	# 距离场语义:两腿贴近即融并——平图/高架图两腿直道段之间都不立墙(等值线在腰部
+	# 合拢,墙只围并集外围;端部半圆衔接处等值线绕行横穿 z 带属正常,不计),
+	# 替代旧"逐截面收紧"口径
+	var strip_wall_verts := func(b: TrackBuilder) -> int:
+		var w: StaticBody3D = b.get_node_or_null("Walls")
+		if w == null:
+			return -1
+		var wv: PackedVector3Array = (w.get_child(1) as MeshInstance3D) \
+				.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var cnt := 0
+		for v in wv:
+			if v.x > -60.0 and v.x < 110.0 and v.z > -15.5 and v.z < -4.5:
+				cnt += 1
+		return cnt
+	ok(strip_wall_verts.call(fb) == 0, "平图贴近腿融并:直道两腿间无墙(%d 顶点)" % strip_wall_verts.call(fb))
+	ok(strip_wall_verts.call(eb) == 0, "高架贴近腿同样融并:直道两腿间无墙(%d 顶点)" % strip_wall_verts.call(eb))
 
-	# 桥下净空:下直道朝向桥一侧的碰撞墙顶被桥面压低(≤ 桥面6m - 净空1.5)
+	# 高架图:并集外围墙在两层高度各自跟随(桥面腿侧 y≈6,地面腿侧 y≈0);
+	# 直墙段被 DP 抽稀到近乎两端点,计数量级为几十
 	var walls_e: StaticBody3D = eb.get_node_or_null("Walls")
-	var col_under := 0
-	var col_under_max := -1e9
 	if walls_e != null:
-		var faces: PackedVector3Array = (walls_e.get_child(0) as CollisionShape3D).shape.get_faces()
-		for v in faces:
-			if v.x > -60.0 and v.x < 110.0 and v.z > -18.0 and v.z < -14.0:
-				col_under += 1
-				col_under_max = maxf(col_under_max, v.y)
-	ok(col_under > 60 and col_under_max < 4.7,
-			"桥下护栏碰撞墙留净空(%d 顶点,顶高 %.2fm ≤ 4.5)" % [col_under, col_under_max])
+		var wve: PackedVector3Array = (walls_e.get_child(1) as MeshInstance3D) \
+				.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var hi_n := 0
+		var lo_n := 0
+		for v in wve:
+			if v.y > 4.5:
+				hi_n += 1
+			elif v.y < 1.5:
+				lo_n += 1
+		ok(hi_n > 20 and lo_n > 20,
+				"两层外围墙各自跟随桥面/地面高度(高层 %d,低层 %d 顶点)" % [hi_n, lo_n])
 
 	# 高度路基边坡:高架图生成,平图不生成(零回归);边坡不吞并桥下路面
 	var apron_e: StaticBody3D = eb.get_node_or_null("GrassApron")

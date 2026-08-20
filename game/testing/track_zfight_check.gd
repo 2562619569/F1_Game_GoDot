@@ -119,14 +119,17 @@ func _init() -> void:
 			var sb: float = float(lat["dist"]) - float(lat["half"])
 			if not in_hp.call(float(lat["s"])) and (sb < -0.1 or sb > 9.5):
 				g_bad += 1
-			elif v.y > float(lat["road_y"]) - 0.005 or v.y < float(lat["road_y"]) - 0.3:
+			# 路肩平接:内缘允许与路面齐平(±5mm),只不许高出;下限 30cm 容纳
+			# 路肩剖面落差(15cm)+ 岔口下沉(6cm)
+			elif v.y > float(lat["road_y"]) + 0.005 or v.y < float(lat["road_y"]) - 0.3:
 				g_bad += 1
-			# 裁剪边线性插值在弯曲 dirt 边缘可浅穿 0.2~0.4m,穿透段被 dirt 表面
-			# (高出砂石 3cm)覆盖,不可见无冲突;深穿(>0.5m)才是裁剪失败
-			elif tb._corridor_at(v, -0.5)["blocked"]:
+			# 岔口不做几何裁剪(距离场语义):dirt 覆盖区内的砂石按高度分离
+			# 整体下沉,必须低于覆盖路面 ≥2.5cm(永不共面)
+			elif tb.field_all.f_only(v.x, v.z) < 0.0 \
+					and v.y > float(tb.field_all.sample(v.x, v.z)["y"]) - 0.025:
 				g_bad += 1
 	ok(gravel != null and g_total > 0, "砂石路肩生成(顶点 %d 个)" % g_total)
-	ok(g_bad == 0, "砂石路肩在路缘~护栏带内、低于路面且贴走廊边裁剪(越界 %d)" % g_bad)
+	ok(g_bad == 0, "砂石路肩在路缘~护栏带内、内缘与路面平接且贴走廊边裁剪(越界 %d)" % g_bad)
 
 	# --- 路缘边线在岔口断开(中心虚线保留,按横向位置过滤) ---
 	var line_bad := 0

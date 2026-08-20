@@ -66,7 +66,7 @@ func _run() -> void:
 	ok(main.race != null and main.race.round_idx == 1, "round 1 started")
 	ok(main.current_ui == null, "car select UI hidden during race")
 	ok(main.race.countdown_hold, "garage->race seamless transition holds countdown")
-	ok(main.race.racers.size() == 4, "4 racers on grid (1 player + 3 AI)")
+	ok(main.race.racers.size() == 5, "5 racers on grid (1 player + 4 AI)")
 	var pv: Vehicle = main.race.player_racer.vehicle
 	ok(pv.is_in_group("player_car"), "player car in player_car group")
 	var torque_r1: float = main.race.player_torque_applied
@@ -150,7 +150,7 @@ func _run() -> void:
 	ok(main.race == null, "race world cleared for 3D stage camera")
 	ok(main.current_ui.get_node_or_null("CarStage") != null, "intermission embeds 3D car stage")
 	ok(main.current_ui.stage.current_car_id == Match.car_id, "stage shows player chassis %d" % Match.car_id)
-	ok(main.current_ui._results.size() == 4, "round result lists 4 racers")
+	ok(main.current_ui._results.size() == 5, "round result lists 5 racers")
 	ok(main.current_ui._rewards.size() >= 1, "rank rewards granted (%d parts)" % main.current_ui._rewards.size())
 
 	# ---- 8. 局间改装：装上引擎件，属性应提升 ----
@@ -186,7 +186,8 @@ func _run() -> void:
 	var grid_uniq := {}
 	for g in grid_ids:
 		grid_uniq[g] = true
-	ok(grid_ids.size() == 4 and not grid_ids.has(-1) and grid_uniq.size() == 4,
+	ok(grid_ids.size() == main.race.racers.size() and not grid_ids.has(-1)
+			and grid_uniq.size() == grid_ids.size(),
 			"round 2 grid numbers all distinct: %s" % str(grid_ids))
 	var spawn_apart := true
 	for i in main.race.racers.size():
@@ -213,6 +214,9 @@ func _run() -> void:
 	ok(main.current_ui.name == "FinalResult", "final round ended -> final result screen")
 	ok(Match.champion != "", "champion decided: %s" % Match.champion)
 	ok(Match.round_history.size() == 4, "4 sub-rounds recorded in history")
+	ok(Match.points.size() == 5, "points accumulated for all 5 racers")
+	ok(int(Match.points.get(Match.champion, -1)) == Match.points.values().max(),
+			"champion has top total points (%s = %d)" % [Match.champion, Match.points.values().max()])
 
 	# ---- 11. 返回大厅，状态复位 ----
 	main.current_ui.back_btn.pressed.emit()

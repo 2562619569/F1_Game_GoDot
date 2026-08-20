@@ -27,67 +27,256 @@ theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="Center"]
 theme_type_variation = &"Accent"
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 36
 text = "ROOM CREATED"
 horizontal_alignment = 1
 
 [node name="Panel" parent="Center" instance=ExtResource("3_panel")]
 
 [node name="Margin" type="MarginContainer" parent="Center/Panel"]
-theme_override_constants/margin_left = 24
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 16
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 14
 
-[node name="Inner" type="VBoxContainer" parent="Center/Panel/Margin"]
+[node name="Main" type="HBoxContainer" parent="Center/Panel/Margin"]
+theme_override_constants/separation = 20
+
+[node name="Slots" type="VBoxContainer" parent="Center/Panel/Margin/Main"]
+unique_name_in_owner = true
+theme_override_constants/separation = 4
+
+[node name="Slot1" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot1"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot1/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot1/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P1"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot1/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "YOU"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot1/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "HOST"
+
+[node name="Slot2" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot2"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot2/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot2/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P2"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot2/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "RIVAL-1"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot2/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "AI · READY"
+
+[node name="Slot3" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot3"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot3/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot3/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P3"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot3/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "RIVAL-2"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot3/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "AI · READY"
+
+[node name="Slot4" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot4"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot4/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot4/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P4"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot4/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "RIVAL-3"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot4/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "AI · READY"
+
+[node name="Slot5" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot5"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot5/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot5/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P5"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot5/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "—"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot5/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "OPEN"
+
+[node name="Slot6" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot6"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot6/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot6/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P6"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot6/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "—"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot6/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "OPEN"
+
+[node name="Slot7" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot7"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot7/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot7/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P7"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot7/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "—"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot7/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "OPEN"
+
+[node name="Slot8" parent="Center/Panel/Margin/Main/Slots" instance=ExtResource("3_panel")]
+
+[node name="M" type="MarginContainer" parent="Center/Panel/Margin/Main/Slots/Slot8"]
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 4
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 4
+
+[node name="Row" type="HBoxContainer" parent="Center/Panel/Margin/Main/Slots/Slot8/M"]
+
+[node name="PosLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot8/M/Row"]
+custom_minimum_size = Vector2(30, 0)
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "P8"
+
+[node name="NameLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot8/M/Row"]
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 14
+text = "—"
+
+[node name="StatusLabel" type="Label" parent="Center/Panel/Margin/Main/Slots/Slot8/M/Row"]
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "OPEN"
+
+[node name="Side" type="VBoxContainer" parent="Center/Panel/Margin/Main"]
+custom_minimum_size = Vector2(220, 0)
+alignment = 1
 theme_override_constants/separation = 10
 
-[node name="RoomCodeLabel" type="Label" parent="Center/Panel/Margin/Inner"]
+[node name="RoomCodeLabel" type="Label" parent="Center/Panel/Margin/Main/Side"]
 unique_name_in_owner = true
 theme_type_variation = &"Warm"
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 26
 text = "ROOM  MR-????"
 horizontal_alignment = 1
 
-[node name="Slots" type="HBoxContainer" parent="Center/Panel/Margin/Inner"]
+[node name="AddAiButton" parent="Center/Panel/Margin/Main/Side" instance=ExtResource("5_btn_default")]
 unique_name_in_owner = true
-alignment = 1
-theme_override_constants/separation = 12
+custom_minimum_size = Vector2(0, 48)
+theme_override_font_sizes/font_size = 18
+text = "+ ADD AI"
 
-[node name="SlotP1" parent="Center/Panel/Margin/Inner/Slots" instance=ExtResource("3_panel")]
-
-[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP1"]
-custom_minimum_size = Vector2(110, 0)
-theme_override_font_sizes/font_size = 14
-text = "YOU
-(HOST)"
-horizontal_alignment = 1
-
-[node name="SlotP2" parent="Center/Panel/Margin/Inner/Slots" instance=ExtResource("3_panel")]
-
-[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP2"]
-custom_minimum_size = Vector2(110, 0)
-theme_override_font_sizes/font_size = 14
-text = "RIVAL-1
-(AI · READY)"
-horizontal_alignment = 1
-
-[node name="SlotP3" parent="Center/Panel/Margin/Inner/Slots" instance=ExtResource("3_panel")]
-
-[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP3"]
-custom_minimum_size = Vector2(110, 0)
-theme_override_font_sizes/font_size = 14
-text = "RIVAL-2
-(AI · READY)"
-horizontal_alignment = 1
-
-[node name="SlotP4" parent="Center/Panel/Margin/Inner/Slots" instance=ExtResource("3_panel")]
-
-[node name="Label" type="Label" parent="Center/Panel/Margin/Inner/Slots/SlotP4"]
-custom_minimum_size = Vector2(110, 0)
-theme_override_font_sizes/font_size = 14
-text = "RIVAL-3
-(AI · READY)"
+[node name="SeatsLabel" type="Label" parent="Center/Panel/Margin/Main/Side"]
+unique_name_in_owner = true
+theme_type_variation = &"Dim"
+theme_override_font_sizes/font_size = 13
+text = "SEATS  5 / 8"
 horizontal_alignment = 1
 
 [node name="InfoLabel" type="Label" parent="Center"]
@@ -98,7 +287,7 @@ text = "4 sub-rounds · Loot & tune between rounds · Final round decides the ch
 horizontal_alignment = 1
 
 [node name="Spacer" type="Control" parent="Center"]
-custom_minimum_size = Vector2(0, 16)
+custom_minimum_size = Vector2(0, 12)
 
 [node name="PlayButton" parent="Center" instance=ExtResource("4_btn_primary")]
 unique_name_in_owner = true
