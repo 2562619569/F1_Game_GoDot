@@ -493,6 +493,10 @@ func _integrate_forces(state : PhysicsDirectBodyState3D):
 	current_gravity = state.total_gravity
 
 func initialize():
+	# 匀速滑行（轮上无净推力、无物理接触）时物理引擎会休眠整个孤岛，且
+	# apply_force 不会唤醒休眠体——车会被冻在当前速度无视一切力（实测复现）。
+	# 赛车全程活跃，直接禁用休眠。
+	can_sleep = false
 	# Check to verify that surface types are provided
 	if tire_stiffnesses.size() == 0:
 		push_error("No surface types provided for tire stiffness")
