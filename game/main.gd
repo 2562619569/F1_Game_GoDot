@@ -26,6 +26,8 @@ var showroom: Node3D
 var speed_motion_blur: SpeedMotionBlur
 
 func _ready() -> void:
+	Net.join_requested.connect(_on_net_join_requested)
+	Net.session.start_requested.connect(_on_net_start_requested)
 	show_lobby()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -54,16 +56,20 @@ func show_lobby() -> void:
 	_clear_race()
 	_clear_showroom()
 	Match.reset()
+	Net.session.leave_room()
 	var s := LobbyScene.instantiate()
 	_set_ui(s)
 	s.create_room_pressed.connect(show_room)
 	s.showroom_pressed.connect(show_showroom)
 	flow_changed.emit("lobby")
 
-func show_room() -> void:
+## client=true 表示经由好友邀请加入他人房间（session 已在加入流程中），
+## 否则视为房主创建房间（离线=本地房间，在线=Steam 大厅）
+func show_room(client := false) -> void:
 	var s := RoomScene.instantiate()
 	_set_ui(s)
-	s.play_pressed.connect(show_car_select)
+	if not client and not Net.session.active:
+		Net.session.create_room()
 	s.back_pressed.connect(show_lobby)
 	flow_changed.emit("room")
 
@@ -109,6 +115,10 @@ var _finish_base_time_scale := 1.0
 
 func start_round() -> void:
 	_clear_race()
+	# 在线房间的 AI 数由房主大厅数据权威下发；离线 Match.ai_count 本就是源
+	if Net.session.online() and Net.session.active:
+		Match.ai_count = Net.session.ai_count()
+		Net.session.mark_started()  # 后加入者不再触发开始广播
 	var stage := _begin_garage_transition()
 	if stage == null:
 		_clear_ui()  # 无展台（如直连调用）：保持原硬切
@@ -650,6 +660,29 @@ func _transition_race_to_garage(garage: Node3D) -> void:
 	await RenderingServer.frame_post_draw
 	overlay.queue_free()
 	sub.queue_free()
+
+# ---------------- 好友邀请 / 联机广播 ----------------
+
+## 房主按 PLAY 后各端收到（离线单机同样走此通路），从房间界面进选车
+func _on_net_start_requested() -> void:
+	if current_ui is Control and current_ui.name == "RoomInvite":
+		show_car_select()
+
+## 好友接受邀请或从好友列表"加入游戏"：只在大厅/房间界面放行，
+## 比赛与选车中忽略（避免破坏整局流程，提示走日志）
+func _on_net_join_requested(lobby_id: int, _friend_id: int) -> void:
+	if Net.session.active and Net.session.lobby_id == lobby_id:
+		return  # 已在该房间（Steam 可能对同房间重复回调）
+	var in_lobby := current_ui is Control and current_ui.name == "Lobby"
+	var in_room := current_ui is Control and current_ui.name == "RoomInvite"
+	if not (in_lobby or in_room):
+		print("[NET] join request ignored on busy screen")
+		return
+	if Net.session.active:
+		Net.session.leave_room()
+	var requested := Net.session.join_room(lobby_id)
+	if requested and in_lobby:
+		show_room(true)
 
 func show_final_result() -> void:
 	_clear_race()

@@ -23,6 +23,7 @@ config/icon="res://addons/gevp/icon.png"
 
 Settings="*res://config/dist/settings.gd"
 Match="*res://game/autoload/match.gd"
+Net="*res://game/autoload/net.gd"
 
 [gui]
 

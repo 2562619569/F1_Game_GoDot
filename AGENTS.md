@@ -58,6 +58,7 @@ GODOT="C:/Tools/Godot/Godot.exe"   # 4.7.1 stable，唯一可用引擎路径（E
 | 体积云天空 volumetric_clouds | `--path . res://game/testing/env_cloud_check.tscn` | 秒级 |
 | 展厅 showroom | `--path . res://game/testing/showroom_check.tscn` 和 `showroom_flow_check.tscn` | 秒级 |
 | HUD 排名动效 | `--path . res://game/testing/standings_anim_check.tscn` | ~2s |
+| 联机房间/Steam 大厅（LobbySession/桥接层，见 docs/联机与Steam接入.md） | `--path . res://game/testing/net_lobby_check.tscn`（41 断言，无需 Steam） | 秒级 |
 | 赛道构建/地图 JSON | `--path . res://game/testing/track_build_test.tscn` 和 `-s res://game/testing/track_zfight_check.gd`（同 env_check 加 `--path .`） | 十几秒 |
 | main.gd 流程/车库过渡 | `--path . res://game/testing/garage_transition_check.tscn` | 1-2 分钟 |
 | 整局循环/配表联动 | `--path . res://game/testing/smoke_test.tscn`（48 断言，time_scale=3） | 分钟级 |
@@ -73,7 +74,8 @@ GODOT="C:/Tools/Godot/Godot.exe"   # 4.7.1 stable，唯一可用引擎路径（E
 # -s 快速组：tire_model / bump / camera / engine_audio / shift_logic / shift_rev /
 #           collision / wheel_assembly
 # 场景组：track_build_test / track_zfight / grid_check / loot_roll_check /
-#         env_check / standings_anim / showroom_check / showroom_flow_check
+#         env_check / standings_anim / showroom_check / showroom_flow_check /
+#         net_lobby_check
 # 重头（按序）：rewind_check → garage_transition_check → smoke_test
 node tools/track_editor/test_editor.mjs    # 仅当改过 tools/track_editor
 ```
@@ -88,7 +90,7 @@ for s in tire_model bump camera engine_audio shift_logic shift_rev collision whe
 done
 "$G" --headless --path . -s res://game/testing/track_zfight_check.gd >/dev/null 2>&1 && echo "OK  zfight" || echo "FAIL zfight"
 "$G" --headless --path . -s res://game/testing/env_check.gd >/dev/null 2>&1 && echo "OK  env" || echo "FAIL env"
-for t in track_build_test grid_check loot_roll_check standings_anim_check showroom_check showroom_flow_check; do
+for t in track_build_test grid_check loot_roll_check standings_anim_check showroom_check showroom_flow_check net_lobby_check; do
   "$G" --headless --path . res://game/testing/${t}.tscn >/dev/null 2>&1 && echo "OK  $t" || echo "FAIL $t"
 done
 ```

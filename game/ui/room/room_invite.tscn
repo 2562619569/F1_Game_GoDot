@@ -26,6 +26,7 @@ grow_vertical = 2
 theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="Center"]
+unique_name_in_owner = true
 theme_type_variation = &"Accent"
 theme_override_font_sizes/font_size = 36
 text = "ROOM CREATED"
@@ -265,6 +266,12 @@ theme_type_variation = &"Warm"
 theme_override_font_sizes/font_size = 26
 text = "ROOM  MR-????"
 horizontal_alignment = 1
+
+[node name="InviteButton" parent="Center/Panel/Margin/Main/Side" instance=ExtResource("5_btn_default")]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+theme_override_font_sizes/font_size = 16
+text = "INVITE FRIENDS"
 
 [node name="AddAiButton" parent="Center/Panel/Margin/Main/Side" instance=ExtResource("5_btn_default")]
 unique_name_in_owner = true
